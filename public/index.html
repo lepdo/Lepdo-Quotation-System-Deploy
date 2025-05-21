@@ -18,8 +18,8 @@
     <link rel="stylesheet" href="/css/navbar.css">
 </head>
 <body>
-  <div id="navbar"></div>
-    <div class="container">
+    <div id="navbar"></div>
+    <div class="container"> 
         <div class="header">
             <h1 class="form-title">Metal & Diamond Quotation</h1>
         </div>
@@ -31,11 +31,11 @@
                 <div class="form-row">
                     <div class="form-group">
                         <label for="itemIdSku">ID / SKU</label>
-                        <input type="text" id="itemIdSku" placeholder="Enter Item ID or SKU">
+                        <input type="text" id="itemIdSku" placeholder="Enter Item ID or SKU" required>
                     </div>
                     <div class="form-group">
                         <label for="itemCategory">Category</label>
-                        <select id="itemCategory" class="category-select">
+                        <select id="itemCategory" class="category-select" required>
                             <option value="">Select Category</option>
                             <option value="Earrings">Earrings</option>
                             <option value="Rings">Rings</option>
@@ -48,15 +48,14 @@
                 </div>
                 <div class="form-row">
                     <div class="form-group full-width image-upload-group">
-                        <label for="itemImage">Upload Image (Optional)</label>
+                        <label for="itemImage">Upload Images (Optional)</label>
                         <div class="image-input-wrapper">
-                            <input type="file" id="itemImage" accept="image/*" class="image-input-hidden">
+                            <input type="file" id="itemImage" accept="image/*" class="image-input-hidden" multiple>
                             <label for="itemImage" class="image-input-label">
                                 <span class="image-input-icon">🖼️</span>
                                 <span id="imageInputText">Click to upload or drag & drop</span>
                             </label>
-                            <img id="itemImagePreviewInput" src="#" alt="Image Preview" class="image-preview-input" style="display:none;">
-                            <button type="button" id="removeImageBtn" class="btn btn-remove-image" style="display:none;">×</button>
+                            <div id="itemImagePreviews" class="image-previews-container"></div>
                         </div>
                     </div>
                 </div>
@@ -80,21 +79,12 @@
                                 <th>Rate/Grm</th>
                                 <th>Total Metal</th>
                                 <th>Making Charges</th>
+                                <th>Total</th>
                                 <th>Action</th>
                             </tr>
                         </thead>
                         <tbody></tbody>
                     </table>
-                </div>
-                <div class="form-row">
-                    <div class="form-group">
-                        <label for="totalMetalAmount">Total Metal Amount</label>
-                        <input type="number" id="totalMetalAmount" class="total-metal-amount" readonly>
-                    </div>
-                    <div class="form-group">
-                        <label for="totalMetalMakingCharges">Total Making Charges (Metal)</label>
-                        <input type="number" id="totalMetalMakingCharges" class="total-metal-making-charges" readonly>
-                    </div>
                 </div>
             </div>
 
@@ -104,27 +94,27 @@
                 <div class="form-row">
                     <div class="form-group">
                         <label for="diamondShape">Shape</label>
-                        <select id="diamondShape" class="shape-select">
+                        <select id="diamondShape" class="shape-select" required>
                             <option value="">Select Shape</option>
                         </select>
                     </div>
                     <div class="form-group">
                         <label for="diamondMm">MM</label>
-                        <input type="text" id="diamondMm" placeholder="Enter MM value">
+                        <input type="text" id="diamondMm" placeholder="Enter MM value" required>
                     </div>
                     <div class="form-group">
                         <label for="diamondPcs">PCS</label>
-                        <input type="number" id="diamondPcs" placeholder="Enter PCS">
+                        <input type="number" id="diamondPcs" placeholder="Enter PCS" required>
                     </div>
                 </div>
                 <div class="form-row">
                     <div class="form-group">
                         <label for="weightPcs">Weight/PCS</label>
-                        <input type="number" id="weightPcs" placeholder="Enter weight per piece" step="0.01">
+                        <input type="number" id="weightPcs" placeholder="Enter weight per piece" step="0.01" required>
                     </div>
                     <div class="form-group">
                         <label for="totalWeight">Total Weight/CT</label>
-                        <input type="number" id="totalWeight" readonly>
+                        <input type="number" id="totalWeight" readonly required>
                     </div>
                     <div class="form-group">
                         <label for="shapeMmDropdown">Shape & MM</label>
@@ -136,7 +126,7 @@
                 <div class="form-row">
                     <div class="form-group">
                         <label for="priceCt">Price/CT</label>
-                        <input type="number" id="priceCt" readonly>
+                        <input type="number" id="priceCt" readonly required>
                     </div>
                     <div class="form-group manual-price-container" id="manualPriceContainer">
                         <label for="manualPriceCt">Enter Price/CT</label>
@@ -144,7 +134,7 @@
                     </div>
                     <div class="form-group">
                         <label for="diamondTotal">Total (Diamond)</label>
-                        <input type="number" id="diamondTotal" readonly>
+                        <input type="number" id="diamondTotal" readonly required>
                     </div>
                     <div class="form-group form-group-action">
                         <button id="addDiamondBtn" class="btn btn-add">Add Diamond</button>
@@ -172,66 +162,58 @@
                         <label for="totalDiamondAmount">Total Diamond Amount</label>
                         <input type="number" id="totalDiamondAmount" readonly>
                     </div>
-                     <div class="form-group" style="flex-grow:1;"></div>
+                    <div class="form-group" style="flex-grow:1;"></div>
                 </div>
             </div>
 
             <!-- QUOTATION SUMMARY -->
             <div class="quotation-summary">
                 <h3 class="summary-title">Quotation Summary</h3>
+                <div class="form-row">
+                    <div class="form-group">
+                        <label>ID / SKU</label>
+                        <div id="summaryIdSku" class="summary-value">-</div>
+                    </div>
+                    <div class="form-group">
+                        <label>Category</label>
+                        <div id="summaryCategory" class="summary-value">-</div>
+                    </div>
+                </div>
                 <div class="summary-image-container">
-                    <img id="summaryImagePreview" src="#" alt="Item Image" class="summary-image-preview" style="display:none;">
-                </div>
-                <div class="form-row">
-                    <div class="form-group">
-                        <label>Metal & Purity Details</label>
-                        <div id="summaryMetalPurity" class="summary-value">-</div>
-                    </div>
-                    <div class="form-group">
-                        <label>Total Metal Amount (₹)</label>
-                        <div id="summaryMetalAmount" class="summary-value">0.00</div>
-                    </div>
-                    <div class="form-group">
-                        <label>Metal Making Charges (₹)</label>
-                        <div id="summaryMetalMakingCharges" class="summary-value">0.00</div>
-                    </div>
-                </div>
-                <hr style="border: none; border-top: 1px solid var(--premium-border); margin: 25px 0;">
-                <div class="form-row">
-                     <div class="form-group">
-                        <label>Total Diamond Amount (₹)</label>
-                        <div id="summaryDiamondAmount" class="summary-value">0.00</div>
-                    </div>
-                    <div class="form-group" style="flex-basis: 100%; text-align:right;">
-                        <label id="finalQuotationLabel" style="font-size: 1.1rem; color: var(--premium-text); font-weight:600; margin-bottom:5px; display:block;">FINAL QUOTATION (₹)</label>
-                        <div id="finalQuotation" class="summary-value">0.00</div>
-                    </div>
+                    <div id="summaryImagePreviews" class="summary-image-previews-container"></div>
                 </div>
                 <div class="table-responsive-wrapper">
-                    <table class="summary-table" id="detailedSummaryTable">
+                    <table class="summary-table" id="metalSummaryTable">
                         <thead>
                             <tr>
-                                <th>Item Details</th>
-                                <th>Metal Amount (₹)</th>
+                                <th>Metal & Purity</th>
+                                <th>Grams</th>
+                                <th>Rate/Gram (₹)</th>
+                                <th>Total Metal (₹)</th>
                                 <th>Making Charges (₹)</th>
-                                <th>Diamond Amount (₹)</th>
+                                <th>Total Diamond Amount (₹)</th>
                                 <th>Total (₹)</th>
                             </tr>
                         </thead>
                         <tbody></tbody>
                     </table>
                 </div>
-            </div> <!-- End of quotation-summary -->
+            </div>
 
             <!-- Action Buttons Panel -->
             <div class="form-action-buttons">
                 <button id="saveQuotationJsonBtn" class="btn btn-primary">Save Quotation</button>
                 <button id="downloadExcelBtn" class="btn btn-info">Download Excel</button>
                 <button id="resetQuotationBtn" class="btn btn-danger">Reset Quotation</button>
+                <div id="saveLoader" class="loader" style="display: none;"></div>
             </div>
 
-        </div> <!-- End of form-body -->
-    </div> <!-- End of container -->
+            <!-- Loading Spinner -->
+            <div class="loading" id="loadingSpinner">
+                <div class="spinner"></div>
+            </div>
+        </div>
+    </div>
 
     <!-- Image Modal -->
     <div id="imageModal" class="image-modal">
@@ -261,12 +243,29 @@
     <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/js/select2.min.js"></script>
     <script src="/js/script.js"></script>
+    
     <script>
         fetch('navbar.html')
-            .then(response => response.text())
+            .then(response => {
+                if (!response.ok) throw new Error('Failed to load navbar.html');
+                return response.text();
+            })
             .then(data => {
                 document.getElementById('navbar').innerHTML = data;
-            });
+                // Run active link logic after navbar is loaded
+                const navLinks = document.querySelectorAll('.nav-links');
+                const currentPath = window.location.pathname;
+                // console.log('Current Path:', currentPath);
+                navLinks.forEach(link => {
+                    const linkPath = new URL(link.href).pathname;
+                    // console.log('Link Path:', linkPath);
+                    if (linkPath === currentPath || link.href === window.location.href) {
+                        link.classList.add('active');
+                        // console.log('Active link set:', link.href);
+                    }
+                });
+            })
+            .catch(error => console.error('Error loading navbar:', error));
     </script>
 </body>
 </html>

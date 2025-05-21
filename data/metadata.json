@@ -1,1 +1,49 @@
-[]
+[
+  {
+    "identification": {
+      "idSku": "1",
+      "category": "Rings",
+      "images": [
+        "data"]
+         },
+    "metalItems": [
+      {
+        "purity": "10KT",
+        "grams": "3.00",
+        "ratePerGram": "4410.00",
+        "totalMetal": "13230.00",
+        "makingCharges": "2400.00",
+        "total": "15630.00"
+      }
+    ],
+    "diamondItems": [
+      {
+        "shape": "Asscher",
+        "mm": "2.70 x 2.70",
+        "pcs": "2",
+        "weightPerPiece": "3.00",
+        "totalWeightCt": "6.00",
+        "pricePerCt": "8500.00",
+        "total": "51000.00"
+      }
+    ],
+    "summary": {
+      "idSku": "1",
+      "category": "Rings",
+      "totalDiamondAmount": "51000.00",
+      "metalSummary": [
+        {
+          "purity": "10KT",
+          "grams": "3.00",
+          "ratePerGram": "4410.00",
+          "totalMetal": "13230.00",
+          "makingCharges": "2400.00",
+          "totalDiamondAmount": "51000.00",
+          "total": "66630.00"
+        }
+      ]
+    },
+    "quotationId": "Q-00080",
+    "quotationDate": "2025-05-15T06:40:45.907Z"
+  }
+]

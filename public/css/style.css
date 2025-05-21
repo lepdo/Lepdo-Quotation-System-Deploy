@@ -3,7 +3,6 @@
 
 /* Define Diamond Quotation Theme */
 :root {
-    /* Colors */
     --primary-color: #000000; /* Champagne Gold */
     --primary-hover-color: #D4A71E; /* Darker Champagne Gold */
     --secondary-color: #0A1E3C; /* Sapphire Blue */
@@ -30,27 +29,23 @@
     --info-color: #3F5A7A; /* Slate Blue */
     --info-hover-color: #2E4860; /* Darker Slate Blue */
     
-    /* Shadows */
     --shadow-light: 0 2px 6px rgba(0, 0, 0, 0.1);
     --shadow-medium: 0 4px 12px rgba(0, 0, 0, 0.15);
     --shadow-strong: 0 6px 20px rgba(0, 0, 0, 0.2);
-    --glow-effect: 0 0 12px rgba(232, 185, 35, 0.4); /* Champagne Gold Glow */
+    --glow-effect: 0 0 12px rgba(232, 185, 35, 0.4);
     
-    /* Border Radii */
     --border-radius-sm: 6px;
     --border-radius-md: 8px;
     --border-radius-lg: 12px;
     
-    /* Fonts */
     --font-primary: 'Montserrat', sans-serif;
     --font-secondary: 'Open Sans', sans-serif;
     
-    /* Font Sizes */
-    --font-size-base: 1rem; /* 16px */
-    --font-size-sm: 0.875rem; /* 14px */
-    --font-size-lg: 1.125rem; /* 18px */
-    --font-size-xl: 1.5rem; /* 24px */
-    --font-size-2xl: 2rem; /* 32px */
+    --font-size-base: 1rem;
+    --font-size-sm: 0.875rem;
+    --font-size-lg: 1.125rem;
+    --font-size-xl: 1.5rem;
+    --font-size-2xl: 2rem;
 }
 
 /* Global Resets */
@@ -66,12 +61,10 @@ body {
     line-height: 1.8;
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
-
     width: 100%;
     height: 100%;
 }
 
-/* Container */
 /* Container */
 .container {
     max-width: 1300px;
@@ -118,6 +111,7 @@ body {
     background: var(--surface-color);
     border-radius: var(--border-radius-lg);
     box-shadow: var(--glow-effect);
+    align-items: center;
 }
 
 .form-action-buttons .btn {
@@ -182,6 +176,30 @@ body {
     background: var(--danger-hover-color);
 }
 
+.form-action-buttons .btn.disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+    box-shadow: none;
+    transform: none;
+}
+
+/* Loader */
+.loader {
+    display: none;
+    width: 40px;
+    height: 40px;
+    border: 5px solid var(--warning-color); /* Yellow color */
+    border-top: 5px solid transparent;
+    border-radius: 50%;
+    animation: spin 1s linear infinite;
+    margin-left: 15px;
+}
+
+@keyframes spin {
+    0% { transform: rotate(0deg); }
+    100% { transform: rotate(360deg); }
+}
+
 /* Form Body */
 .form-body {
     padding: 0;
@@ -239,7 +257,45 @@ body {
 .form-group.full-width {
     flex-basis: 100%;
 }
+/* Loading Spinner */
+#loadingSpinner {
+    display: none;
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: rgba(0, 0, 0, 0.5);
+    z-index: 2000;
+    justify-content: center;
+    align-items: center;
+}
 
+#loadingSpinner .spinner {
+    width: 50px;
+    height: 50px;
+    border: 6px solid var(--warning-color); /* Yellow (#FFB300) */
+    border-top: 6px solid transparent;
+    border-radius: 50%;
+    animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+    0% { transform: rotate(0deg); }
+    100% { transform: rotate(360deg); }
+}
+
+/* Remove .loader class if not used elsewhere */
+.loader {
+    display: none; /* Hide unless used in saveLoader */
+    width: 40px;
+    height: 40px;
+    border: 5px solid var(--warning-color);
+    border-top: 5px solid transparent;
+    border-radius: 50%;
+    animation: spin 1s linear infinite;
+    margin-left: 15px;
+}
 label {
     display: block;
     margin-bottom: 10px;
@@ -289,7 +345,7 @@ select:focus,
 input[readonly] {
     background: #E9ECEF;
     cursor: not-allowed;
-    color: var(--text-light-color);
+    color: black;
 }
 
 /* Image Upload */
@@ -345,52 +401,65 @@ input[readonly] {
     font-family: var(--font-secondary);
 }
 
-.image-preview-input {
-    max-width: 100%;
-    max-height: 140px;
+.image-previews-container {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 15px;
     margin-top: 20px;
+    justify-content: center;
+}
+
+.image-preview-wrapper {
+    position: relative; /* Ensure the wrapper is a positioning context */
+    display: inline-block; /* Prevent wrapper from stretching */
+}
+
+.image-preview-input,
+.summary-image-preview {
+    width: 120px;
+    height: 120px;
+    object-fit: cover;
     border-radius: var(--border-radius-md);
     border: 1px solid var(--border-color);
-    object-fit: cover;
     box-shadow: var(--shadow-light);
     cursor: pointer;
-    z-index: 5; /* Lower than btn-remove-image */
+    display: block; /* Ensure the image is a block element */
+}
+
+.summary-image-previews-container {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 15px;
+    justify-content: center;
+    margin-bottom: 30px;
 }
 
 .btn-remove-image {
     position: absolute;
-    top: 15px;
-    right: 15px;
-    background: rgba(211, 47, 47, 0.9) !important;
+    top: -10px;
+    right: -10px;
+    background: rgba(211, 47, 47, 0.9);
     color: var(--accent-color);
     border: none;
     border-radius: 50%;
-    width: 35px;
-    height: 35px;
-    font-size: 1.5rem;
-    line-height: 35px;
+    width: 25px;
+    height: 25px;
+    font-size: 1rem;
+    line-height: 25px;
     text-align: center;
     padding: 0;
     cursor: pointer;
     transition: all 0.3s ease;
     box-shadow: 0 2px 5px rgba(0, 0, 0, 0.2);
-    z-index: 10;
     display: flex;
     align-items: center;
     justify-content: center;
+    z-index: 10; /* Ensure the button is above the image */
 }
 
 .btn-remove-image:hover {
-    background: var(--danger-color) !important;
-    transform: rotate(90deg) scale(1.1);
-}
-
-.btn-remove-image:hover {
-    background: var(--danger-color) !important; /* Solid red on hover */
-}
-
-.image-upload-group .image-input-wrapper.has-image .image-input-label {
-    display: none;
+    background: var(--danger-color);
+    transform: scale(1.1);
 }
 
 /* Buttons */
@@ -508,6 +577,15 @@ tbody tr:hover {
     background: var(--accent-hover-color);
 }
 
+/* Ensure monetary columns are right-aligned for consistency */
+.summary-table td:nth-child(3),
+.summary-table td:nth-child(4),
+.summary-table td:nth-child(5),
+.summary-table td:nth-child(6),
+.summary-table td:nth-child(7) {
+    text-align: right;
+}
+
 /* Quotation Summary */
 .quotation-summary {
     background: var(--surface-color);
@@ -532,19 +610,6 @@ tbody tr:hover {
     margin-bottom: 30px;
 }
 
-.summary-image-preview {
-    max-width: 240px;
-    max-height: 240px;
-    border-radius: var(--border-radius-md);
-    border: 2px solid var(--primary-color);
-    object-fit: cover;
-    box-shadow: var(--shadow-medium);
-    display: block;
-    margin-left: auto;
-    margin-right: auto;
-    cursor: pointer;
-}
-
 .summary-value {
     font-family: var(--font-secondary);
     font-weight: 600;
@@ -554,25 +619,6 @@ tbody tr:hover {
     display: block;
     border-bottom: 1px dashed var(--border-color);
     margin-bottom: 10px;
-}
-
-.quotation-summary .form-group label {
-    font-size: var(--font-size-base);
-    color: var(--text-color);
-}
-
-.quotation-summary .form-row {
-    align-items: flex-end;
-}
-
-#finalQuotation.summary-value {
-    font-family: var(--font-primary);
-    font-weight: 700;
-    font-size: var(--font-size-2xl);
-    color: var(--success-color);
-    text-align: right;
-    border-bottom: none;
-    padding: 20px 0;
 }
 
 /* Image Modal */
@@ -585,20 +631,23 @@ tbody tr:hover {
     height: 100%;
     background: rgba(0, 0, 0, 0.8);
     z-index: 1000;
+    display: flex;
     justify-content: center;
     align-items: center;
+    overflow: auto;
 }
 
 .image-modal-content {
     max-width: 90%;
     max-height: 90%;
     border-radius: var(--border-radius-md);
+    object-fit: contain;
 }
 
 .image-modal-close {
     position: absolute;
     top: 20px;
-    right: 30px;
+    right: 20px;
     color: var(--accent-color);
     font-size: 2rem;
     cursor: pointer;
@@ -620,28 +669,28 @@ tbody tr:hover {
 
 /* Popup Modal */
 .popup-modal {
-    display: none; /* Hidden by default */
-    position: fixed; /* Stay in place */
+    display: none;
+    position: fixed;
     top: 0;
     left: 0;
     width: 100%;
     height: 100%;
-    background: rgba(0, 0, 0, 0.6); /* Semi-transparent black background */
-    z-index: 1000; /* High z-index */
-    justify-content: center; /* Center horizontally */
-    align-items: center; /* Center vertically */
-    overflow: auto; /* Allow scrolling if content overflows */
+    background: rgba(0, 0, 0, 0.6);
+    z-index: 1000;
+    justify-content: center;
+    align-items: center;
+    overflow: auto;
 }
 
 .popup-modal-content {
-    background: var(--surface-color); /* Pearl White */
+    background: var(--surface-color);
     border-radius: var(--border-radius-lg);
     box-shadow: var(--shadow-strong);
     width: 90%;
-    max-width: 500px; /* Limit width */
+    max-width: 500px;
     padding: 20px;
     position: relative;
-    animation: fadeIn 0.3s ease; /* Animation */
+    animation: fadeIn 0.3s ease;
 }
 
 .popup-modal-header {
@@ -785,10 +834,15 @@ tbody tr:hover {
         flex: 1 1 calc(50% - 20px);
         min-width: 200px;
     }
+
+    .image-preview-input,
+    .summary-image-preview {
+        width: 100px;
+        height: 100px;
+    }
 }
 
 @media (max-width: 768px) {
-  
     .container {
         margin: 20px auto;
     }
@@ -855,13 +909,10 @@ tbody tr:hover {
         font-size: var(--font-size-xl);
     }
 
+    .image-preview-input,
     .summary-image-preview {
-        max-width: 200px;
-        max-height: 200px;
-    }
-
-    #finalQuotation.summary-value {
-        font-size: var(--font-size-xl);
+        width: 80px;
+        height: 80px;
     }
 }
 
@@ -911,15 +962,17 @@ tbody tr:hover {
         min-height: 140px;
     }
 
-    .image-preview-input {
-        max-height: 100px;
+    .image-preview-input,
+    .summary-image-preview {
+        width: 60px;
+        height: 60px;
     }
 
     .btn-remove-image {
-        width: 30px;
-        height: 30px;
-        font-size: 1rem;
-        line-height: 30px;
+        width: 20px;
+        height: 20px;
+        font-size: 0.8rem;
+        line-height: 20px;
     }
 
     .btn {
@@ -944,16 +997,7 @@ tbody tr:hover {
         font-size: var(--font-size-lg);
     }
 
-    .summary-image-preview {
-        max-width: 160px;
-        max-height: 160px;
-    }
-
     .summary-value {
         font-size: var(--font-size-base);
-    }
-
-    #finalQuotation.summary-value {
-        font-size: var(--font-size-lg);
     }
 }

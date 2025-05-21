@@ -2,7 +2,7 @@
   {
     "id": 1,
     "SHAPE": "ROUND",
-    "MM": "0.8",
+    "MM": 0.8,
     "PRICE/CT": 16000,
     "MM & SHAPE": "ROUND-0.8 MM"
   },
@@ -1109,8 +1109,8 @@
     "id": 159,
     "SHAPE": "EMERALD",
     "MM": "3.00 x 2.00",
-    "MM & SHAPE": "EMERALD-3.00 x 2.00 MM",
-    "PRICE/CT": 8000
+    "PRICE/CT": 8000,
+    "MM & SHAPE": "EMERALD-3.00 x 2.00 MM"
   },
   {
     "id": 160,
@@ -2320,8 +2320,8 @@
     "id": 332,
     "SHAPE": "Tap Baguette ",
     "MM": "4.00 x 2.00 x 1.00",
-    "MM & SHAPE": "Tap Baguette -4.00 x 2.00 x 1.00 MM",
-    "PRICE/CT": 9000
+    "PRICE/CT": 9000,
+    "MM & SHAPE": "Tap Baguette -4.00 x 2.00 x 1.00 MM"
   },
   {
     "id": 333,
@@ -2873,7 +2873,7 @@
     "id": 411,
     "SHAPE": "long-cushion",
     "MM": "16.50 x 9.80",
-    "PRICE/CT": 1,
+    "PRICE/CT": 0,
     "MM & SHAPE": "long-cushion-16.50 x 9.80 MM"
   }
 ]

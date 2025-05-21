@@ -1,0 +1,174 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Rate Manager</title>
+    <link rel="stylesheet" href="/css/metalPrice.css">
+    <link rel="icon" type="image/jpeg" href="/assest/logo.jpg">
+    <style>
+        /* Notification styles */
+        .notification {
+            position: fixed;
+            bottom: 20px;
+            right: 20px;
+            background-color: #28a745;
+            color: white;
+            padding: 15px 20px;
+            border-radius: 5px;
+            box-shadow: 0 2px 5px rgba(0, 0, 0, 0.2);
+            z-index: 1000;
+            opacity: 0;
+            transition: opacity 0.3s ease-in-out;
+        }
+        .notification.show {
+            opacity: 1;
+        }
+
+        /* Full-Screen Video Overlay */
+        .video-overlay {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.8); /* Semi-transparent black background */
+            z-index: 1100; /* Above loading spinner (z-index: 1060) */
+            justify-content: center;
+            align-items: center;
+        }
+
+        .video-overlay.active {
+            display: flex;
+        }
+
+        .video-overlay video {
+            max-width: 90%;
+            max-height: 90%;
+            border-radius: 8px;
+            box-shadow: 0 4px 15px rgba(0, 0, 0, 0.3);
+        }
+
+        .close-button {
+            position: absolute;
+            top: 20px;
+            right: 20px;
+            background: #000000; /* Red for visibility */
+            color: white;
+            border: none;
+            border-radius: 50%;
+            width: 40px;
+            height: 40px;
+            font-size: 1.2rem;
+            font-weight: bold;
+            cursor: pointer;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            transition: background-color 0.3s;
+        }
+
+        .close-button:hover {
+            background-color: #c4bf1e;
+        }
+
+        .close-button:active {
+            transform: scale(0.95);
+        }
+
+        /* Ensure header-video is clickable */
+        .header-video {
+            cursor: pointer;
+        }
+
+        /* Responsive adjustments for full-screen video */
+        @media (max-width: 600px) {
+            .video-overlay video {
+                max-width: 95%;
+                max-height: 80%;
+            }
+
+            .close-button {
+                width: 35px;
+                height: 35px;
+                font-size: 1rem;
+                top: 15px;
+                right: 15px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div id="navbar"></div>
+    <div class="container">
+        <video class="header-video" autoplay loop muted playsinline>
+            <source src="/assest/showDiamond.mp4" type="video/mp4">
+            Your browser does not support the video tag.
+        </video>
+        
+        <div class="price-container">
+            <div class="price-card">
+                <label>10KT</label>
+                <input type="number" id="10KT" required>
+            </div>
+            <div class="price-card">
+                <label>14KT</label>
+                <input type="number" id="14KT" required>
+            </div>
+            <div class="price-card">
+                <label>18KT</label>
+                <input type="number" id="18KT" required>
+            </div>
+            <div class="price-card">
+                <label>22KT</label>
+                <input type="number" id="22KT" required>
+            </div>
+            <div class="price-card">
+                <label>24KT</label>
+                <input type="number" id="24KT" required>
+            </div>
+            <div class="price-card">
+                <label>Silver</label>
+                <input type="number" id="Silver" required>
+            </div>
+            <div class="price-card">
+                <label>Platinum</label>
+                <input type="number" id="Platinum" required>
+            </div>
+        </div>
+
+        <button onclick="updatePrices()">Update Price</button>
+        <p id="message"></p>
+
+        <!-- Loading Spinner -->
+        <div class="loading" id="loadingSpinner">
+            <div class="spinner"></div>
+        </div>
+    </div>
+    <script src="/js/metalPrice.js"></script>
+    <script>
+        fetch('navbar.html')
+            .then(response => {
+                if (!response.ok) throw new Error('Failed to load navbar.html');
+                return response.text();
+            })
+            .then(data => {
+                document.getElementById('navbar').innerHTML = data;
+                // Run active link logic after navbar is loaded
+                const navLinks = document.querySelectorAll('.nav-links');
+                const currentPath = window.location.pathname;
+                // console.log('Current Path:', currentPath);
+                navLinks.forEach(link => {
+                    const linkPath = new URL(link.href).pathname;
+                    // console.log('Link Path:', linkPath);
+                    if (linkPath === currentPath || link.href === window.location.href) {
+                        link.classList.add('active');
+                        // console.log('Active link set:', link.href);
+                    }
+                });
+            })
+            .catch(error => console.error('Error loading navbar:', error));
+    </script>
+</body>
+</html>

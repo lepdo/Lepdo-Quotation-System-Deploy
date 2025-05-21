@@ -29,7 +29,9 @@ const elements = {
     confirmationDialog: document.getElementById('confirmation-dialog'),
     confirmDelete: document.getElementById('confirm-delete'),
     cancelDelete: document.getElementById('cancel-delete'),
-    themeToggle: document.getElementById('theme-toggle')
+    themeToggle: document.getElementById('theme-toggle'),
+    backToTop: document.getElementById('backToTop'),
+    scrollToBottom: document.getElementById('scrollToBottom'),
 };
 
 let quotations = [];
@@ -44,16 +46,29 @@ async function init() {
 
 async function fetchQuotations() {
     try {
+        // Show loading spinner
+        document.getElementById('loadingSpinner').style.display = 'flex';
+        
         const response = await fetch('/api/metadata');
         if (!response.ok) {
             throw new Error(`HTTP error! status: ${response.status}`);
         }
         quotations = await response.json();
+        quotations.sort((a, b) => {
+            const dateA = new Date(a.quotationDate);
+            const dateB = new Date(b.quotationDate);
+            if (isNaN(dateA)) return 1;
+            if (isNaN(dateB)) return -1;
+            return dateB - dateA;
+        });
         renderCards(quotations);
     } catch (error) {
         console.error('Error fetching quotations:', error);
         showToast('Failed to load quotations. Please try again.');
         renderCards([]);
+    } finally {
+        // Hide loading spinner
+        document.getElementById('loadingSpinner').style.display = 'none';
     }
 }
 
@@ -63,13 +78,13 @@ function hasValidImage(image) {
 
 function createCard(quotation) {
     const card = document.createElement('div');
-    card.className = `card ${!hasValidImage(quotation.identification.image) ? 'card--no-image' : ''}`;
+    card.className = `card ${!quotation.identification.images.length || !hasValidImage(quotation.identification.images[0]) ? 'card--no-image' : ''}`;
     card.dataset.quotationId = quotation.quotationId;
 
-    if (hasValidImage(quotation.identification.image)) {
+    if (quotation.identification.images.length > 0 && hasValidImage(quotation.identification.images[0])) {
         const img = document.createElement('img');
         img.className = 'card-img';
-        img.src = quotation.identification.image;
+        img.src = quotation.identification.images[0];
         img.alt = quotation.identification.category;
         img.onerror = () => {
             img.classList.add('hidden');
@@ -78,15 +93,32 @@ function createCard(quotation) {
         card.appendChild(img);
     }
 
+    const closeContainer = document.createElement('div');
+    closeContainer.className = 'card-close-container';
+    closeContainer.innerHTML = '';
+
+    const leftBracket = document.createElement('span');
+    leftBracket.className = 'bracket';
+    leftBracket.textContent = '';
+
     const closeBtn = document.createElement('button');
     closeBtn.className = 'card-close-x';
-    closeBtn.innerHTML = '×';
+    closeBtn.innerHTML = 'X';
     closeBtn.setAttribute('aria-label', 'Delete quotation');
     closeBtn.addEventListener('click', (e) => {
         e.stopPropagation();
+        e.preventDefault();
         showDeleteConfirmation(quotation.quotationId);
     });
-    card.appendChild(closeBtn);
+
+    const rightBracket = document.createElement('span');
+    rightBracket.className = 'bracket';
+    rightBracket.textContent = '';
+
+    closeContainer.appendChild(leftBracket);
+    closeContainer.appendChild(closeBtn);
+    closeContainer.appendChild(rightBracket);
+    card.appendChild(closeContainer);
 
     const cardBody = document.createElement('div');
     cardBody.className = 'card-body';
@@ -100,29 +132,103 @@ function createCard(quotation) {
     sku.innerHTML = `<strong>SKU:</strong> ${quotation.identification.idSku}`;
 
     const date = document.createElement('p');
-    date.className = 'card-text';
+    date.className = 'card-text card-date';
     date.innerHTML = `<strong>Date:</strong> ${formatDate(quotation.quotationDate)}`;
 
-    const metal = document.createElement('p');
-    metal.className = 'card-text';
-    metal.innerHTML = `<strong>Metal:</strong> ${quotation.summary.metalPurities}`;
-
-    const total = document.createElement('p');
-    total.className = 'card-text';
-    total.innerHTML = `<strong>Total:</strong> ₹${quotation.summary.finalQuotation}`;
+    const downloadBtn = document.createElement('button');
+    downloadBtn.className = 'download-btn';
+    downloadBtn.innerHTML = '<i class="fas fa-download"></i> Download Excel';
+    downloadBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        exportToExcel(quotation);
+    });
 
     cardBody.appendChild(title);
     cardBody.appendChild(sku);
     cardBody.appendChild(date);
-    cardBody.appendChild(metal);
-    cardBody.appendChild(total);
+    cardBody.appendChild(downloadBtn);
     card.appendChild(cardBody);
 
     card.addEventListener('click', (e) => {
-        if (e.target !== closeBtn) openModal(quotation);
+        if (e.target !== closeBtn && !e.target.classList.contains('bracket') && e.target !== downloadBtn) {
+            openModal(quotation);
+        }
     });
 
     return card;
+}
+
+function exportToExcel(quotation) {
+    // Show loading spinner and disable download button
+    document.getElementById('loadingSpinner').style.display = 'flex';
+    const downloadButtons = document.querySelectorAll('.download-btn');
+    downloadButtons.forEach(btn => btn.disabled = true);
+
+    // Ensure spinner is visible for at least 500ms for UX
+    setTimeout(() => {
+        try {
+            const wb = XLSX.utils.book_new();
+
+            // Metal Items Sheet
+            const metalData = quotation.metalItems.map(item => ({
+                Purity: item.purity,
+                Grams: item.grams,
+                'Rate/Gram': `₹${item.ratePerGram}`,
+                'Total Metal': `₹${item.totalMetal}`,
+                'Making Charges': `₹${item.makingCharges}`
+            }));
+            const metalSheet = XLSX.utils.json_to_sheet(metalData);
+            XLSX.utils.book_append_sheet(wb, metalSheet, 'Metal Items');
+
+            // Diamond Items Sheet
+            const diamondData = quotation.diamondItems.length > 0
+                ? quotation.diamondItems.map(item => ({
+                    Shape: item.shape,
+                    Dimensions: item.mm,
+                    Pieces: item.pcs,
+                    'Weight/Piece': `${item.weightPerPiece}ct`,
+                    'Total Weight': `${item.totalWeightCt}ct`,
+                    'Price/Ct': `₹${item.pricePerCt}`,
+                    Total: `₹${item.total}`
+                }))
+                : [{ Message: 'No diamond items' }];
+            const diamondSheet = XLSX.utils.json_to_sheet(diamondData);
+            XLSX.utils.book_append_sheet(wb, diamondSheet, 'Diamond Items');
+
+            // Summary Sheet
+            const summaryData = quotation.summary.metalSummary.map(item => ({
+                Description: item.purity,
+                'Metal Amount': `₹${item.totalMetal}`,
+                'Making Charges': `₹${item.makingCharges}`,
+                'Diamond Amount': `₹${item.totalDiamondAmount}`,
+                Total: `₹${item.total}`
+            }));
+            const summarySheet = XLSX.utils.json_to_sheet(summaryData);
+            XLSX.utils.book_append_sheet(wb, summarySheet, 'Summary');
+
+            // Identification Sheet
+            const identificationData = [{
+                'SKU ID': quotation.identification.idSku,
+                Category: quotation.identification.category,
+                'Quotation Date': formatDate(quotation.quotationDate)
+            }];
+            const idSheet = XLSX.utils.json_to_sheet(identificationData);
+            XLSX.utils.book_append_sheet(wb, idSheet, 'Identification');
+
+            // Download the Excel file
+            XLSX.writeFile(wb, `Quotation_${quotation.quotationId}.xlsx`);
+
+            // Hide spinner and re-enable buttons
+            document.getElementById('loadingSpinner').style.display = 'none';
+            downloadButtons.forEach(btn => btn.disabled = false);
+            showToast('Excel file downloaded successfully');
+        } catch (error) {
+            console.error('Error exporting Excel:', error);
+            document.getElementById('loadingSpinner').style.display = 'none';
+            downloadButtons.forEach(btn => btn.disabled = false);
+            showToast('Failed to download Excel file. Please try again.');
+        }
+    }, 500); // Minimum 500ms delay for spinner visibility
 }
 
 function renderCards(data) {
@@ -139,11 +245,30 @@ function renderCards(data) {
 function openModal(quotation) {
     currentQuotation = quotation;
 
-    elements.modalImg.className = hasValidImage(quotation.identification.image) ? 'modal-img' : 'modal-img hidden';
-    if (hasValidImage(quotation.identification.image)) {
-        elements.modalImg.src = quotation.identification.image;
+    elements.detailModal.style.display = 'none';
+
+    elements.modalImg.className = quotation.identification.images.length > 0 && hasValidImage(quotation.identification.images[0]) ? 'modal-img' : 'modal-img hidden';
+    if (quotation.identification.images.length > 0 && hasValidImage(quotation.identification.images[0])) {
+        elements.modalImg.src = quotation.identification.images[0];
         elements.modalImg.onerror = () => elements.modalImg.classList.add('hidden');
+        elements.modalImg.style.cursor = 'pointer';
+        elements.modalImg.onclick = () => openFullScreenImage(quotation.identification.images[0]);
+    } else {
+        elements.modalImg.onclick = null;
     }
+
+    const modalBody = document.querySelector('.modal-body');
+    let imageGallery = modalBody.querySelector('.image-gallery');
+    if (!imageGallery) {
+        imageGallery = document.createElement('div');
+        imageGallery.className = 'image-gallery';
+        modalBody.insertBefore(imageGallery, modalBody.firstChild);
+    }
+    imageGallery.innerHTML = quotation.identification.images.length > 0 
+        ? quotation.identification.images.map((img, index) => 
+            `<img src="${img}" alt="Product Image ${index + 1}" class="gallery-img ${index === 0 ? 'active' : ''}" onclick="changeModalImage('${img}')">`
+        ).join('')
+        : '<p>No images available</p>';
 
     elements.modalTitle.textContent = quotation.identification.category;
     elements.modalSku.textContent = quotation.identification.idSku;
@@ -174,21 +299,37 @@ function openModal(quotation) {
         `).join('')
         : '<tr><td colspan="7" style="text-align: center;">No diamond items</td></tr>';
 
-    elements.modalMetalAmount.textContent = `₹${quotation.summary.totalMetalAmount}`;
-    elements.modalMakingCharges.textContent = `₹${quotation.summary.totalMetalMakingCharges}`;
-    elements.modalPurities.textContent = quotation.summary.metalPurities;
-    elements.modalDiamondAmount.textContent = `₹${quotation.summary.totalDiamondAmount}`;
-    elements.modalFinalQuotation.textContent = `₹${quotation.summary.finalQuotation}`;
+    const totalMetalAmount = quotation.metalItems.reduce((sum, item) => sum + parseFloat(item.totalMetal || 0), 0).toFixed(2);
+    const totalMakingCharges = quotation.metalItems.reduce((sum, item) => sum + parseFloat(item.makingCharges || 0), 0).toFixed(2);
+    const metalPurities = quotation.metalItems.map(item => item.purity).join(', ');
 
-    elements.summaryTableBody.innerHTML = quotation.detailedSummaryTable.map(item => `
+    elements.modalMetalAmount.textContent = `₹${totalMetalAmount}`;
+    elements.modalMakingCharges.textContent = `₹${totalMakingCharges}`;
+    elements.modalPurities.textContent = metalPurities;
+    elements.modalDiamondAmount.textContent = `₹${quotation.summary.totalDiamondAmount}`;
+
+    elements.summaryTableBody.innerHTML = quotation.summary.metalSummary.map(item => `
         <tr>
-            <td>${item.description}</td>
-            <td>${item.metalAmount === '-' ? '-' : `₹${item.metalAmount}`}</td>
-            <td>${item.makingCharges === '-' ? '-' : `₹${item.makingCharges}`}</td>
-            <td>${item.diamondAmount === '-' ? '-' : `₹${item.diamondAmount}`}</td>
+            <td>${item.purity}</td>
+            <td>₹${item.totalMetal}</td>
+            <td>₹${item.makingCharges}</td>
+            <td>₹${item.totalDiamondAmount}</td>
             <td>₹${item.total}</td>
         </tr>
     `).join('');
+
+    const modalFooter = document.querySelector('.modal-footer');
+    let downloadBtn = modalFooter.querySelector('.download-btn');
+    if (!downloadBtn) {
+        downloadBtn = document.createElement('button');
+        downloadBtn.className = 'download-btn';
+        downloadBtn.innerHTML = '<i class="fas fa-download"></i> Download Excel';
+        modalFooter.insertBefore(downloadBtn, elements.modalDeleteBtn);
+    }
+    downloadBtn.onclick = (e) => {
+        e.stopPropagation();
+        exportToExcel(quotation);
+    };
 
     elements.modalDeleteBtn.onclick = (e) => {
         e.stopPropagation();
@@ -201,6 +342,38 @@ function openModal(quotation) {
     elements.modalCloseBtn.focus();
 }
 
+function changeModalImage(src) {
+    elements.modalImg.src = src;
+    elements.modalImg.classList.remove('hidden');
+    const galleryImages = document.querySelectorAll('.gallery-img');
+    galleryImages.forEach(img => img.classList.remove('active'));
+    const clickedImage = Array.from(galleryImages).find(img => img.src === src);
+    if (clickedImage) clickedImage.classList.add('active');
+}
+
+function openFullScreenImage(src) {
+    const fullScreenDiv = document.createElement('div');
+    fullScreenDiv.className = 'fullscreen-image';
+    fullScreenDiv.innerHTML = `
+        <img src="${src}" alt="Full Screen Image">
+        <button class="fullscreen-close">X</button>
+    `;
+    document.body.appendChild(fullScreenDiv);
+    document.body.style.overflow = 'hidden';
+
+    fullScreenDiv.querySelector('.fullscreen-close').addEventListener('click', () => {
+        fullScreenDiv.remove();
+        document.body.style.overflow = 'auto';
+    });
+
+    fullScreenDiv.addEventListener('click', (e) => {
+        if (e.target === fullScreenDiv) {
+            fullScreenDiv.remove();
+            document.body.style.overflow = 'auto';
+        }
+    });
+}
+
 function closeModal() {
     elements.detailModal.style.display = 'none';
     document.body.style.overflow = 'auto';
@@ -208,6 +381,10 @@ function closeModal() {
 }
 
 function showDeleteConfirmation(quotationId) {
+    if (!quotationId) {
+        console.warn('showDeleteConfirmation called without a valid quotationId');
+        return;
+    }
     elements.confirmationDialog.style.display = 'block';
     
     elements.confirmDelete.onclick = null;
@@ -233,6 +410,13 @@ async function deleteQuotation(quotationId) {
         }
         const result = await response.json();
         quotations = quotations.filter(q => q.quotationId !== quotationId);
+        quotations.sort((a, b) => {
+            const dateA = new Date(a.quotationDate);
+            const dateB = new Date(b.quotationDate);
+            if (isNaN(dateA)) return 1;
+            if (isNaN(dateB)) return -1;
+            return dateB - dateA;
+        });
         renderCards(quotations);
         showToast(result.message || 'Quotation deleted successfully');
         if (currentQuotation?.quotationId === quotationId) closeModal();
@@ -255,13 +439,52 @@ function populateCategoryFilter() {
         categories.map(category => `<option value="${category}">${category}</option>`).join('');
 }
 
-function formatDate(dateString) {
-    return new Date(dateString).toLocaleDateString('en-US', {
+function formatDate(dateInput) {
+    if (!dateInput) {
+        return 'Invalid Date';
+    }
+
+    let date;
+
+    // Check if input is a Firestore Timestamp object
+    if (typeof dateInput === 'object' && (dateInput._seconds || dateInput.seconds)) {
+        const seconds = dateInput._seconds || dateInput.seconds;
+        const nanoseconds = dateInput._nanoseconds || dateInput.nanoseconds || 0;
+        date = new Date(seconds * 1000 + nanoseconds / 1000000); // Convert to milliseconds
+    } else if (typeof dateInput === 'string') {
+        // Handle string input as before
+        const normalizedString = dateInput.replace(/[\u202F\u00A0]/g, ' ').trim();
+        const [datePart, timePartWithTz] = normalizedString.split(' at ');
+        if (!datePart || !timePartWithTz) {
+            return 'Invalid Date';
+        }
+        const timeParts = timePartWithTz.split(' ');
+        if (timeParts.length < 2) {
+            return 'Invalid Date';
+        }
+        const time = timeParts[0];
+        const period = timeParts[1];
+        try {
+            date = new Date(`${datePart} ${time} ${period}`);
+        } catch (e) {
+            return 'Invalid Date';
+        }
+    } else {
+        return 'Invalid Date';
+    }
+
+    if (isNaN(date)) {
+        return 'Invalid Date';
+    }
+
+    // Format the date for display
+    return date.toLocaleDateString('en-US', {
         year: 'numeric',
         month: 'short',
         day: 'numeric',
         hour: '2-digit',
-        minute: '2-digit'
+        minute: '2-digit',
+        hour12: true
     });
 }
 
@@ -276,8 +499,8 @@ function filterQuotations() {
         const matchesSearch = !searchTerm || [
             q.identification.idSku,
             q.identification.category,
-            q.summary.metalPurities,
-            q.quotationId
+            q.quotationId,
+            q.metalItems.map(item => item.purity).join(', ')
         ].some(field => field.toLowerCase().includes(searchTerm));
 
         const matchesCategory = !category || q.identification.category === category;
@@ -294,6 +517,13 @@ function filterQuotations() {
         return matchesSearch && matchesCategory && matchesSku && matchesDate;
     });
 
+    filtered.sort((a, b) => {
+        const dateA = new Date(a.quotationDate);
+        const dateB = new Date(b.quotationDate);
+        if (isNaN(dateA)) return 1;
+        if (isNaN(dateB)) return -1;
+        return dateB - dateA;
+    });
     renderCards(filtered);
 }
 
@@ -307,7 +537,7 @@ function showSuggestions() {
     const matches = quotations.reduce((acc, q) => {
         if (q.identification.idSku.toLowerCase().includes(term)) acc.push(`SKU: ${q.identification.idSku}`);
         if (q.identification.category.toLowerCase().includes(term)) acc.push(`Category: ${q.identification.category}`);
-        if (q.summary.metalPurities.toLowerCase().includes(term)) acc.push(`Metal: ${q.summary.metalPurities}`);
+        if (q.metalItems.some(item => item.purity.toLowerCase().includes(term))) acc.push(`Metal: ${q.metalItems.map(item => item.purity).join(', ')}`);
         if (q.quotationId.toLowerCase().includes(term)) acc.push(`Quotation ID: ${q.quotationId}`);
         return acc;
     }, []);
@@ -378,12 +608,21 @@ function setupEventListeners() {
     if (elements.themeToggle) {
         elements.themeToggle.addEventListener('click', toggleTheme);
     }
+
+    elements.backToTop.addEventListener('click', () => {
+        window.scrollTo({ top: 0, behavior: 'smooth' });
+    });
+
+    elements.scrollToBottom.addEventListener('click', () => {
+        window.scrollTo({ top: document.body.scrollHeight, behavior: 'smooth' });
+    });
+
     window.addEventListener('resize', () => {
         elements.suggestions.style.display = 'none';
         if (elements.detailModal.style.display === 'block') {
             elements.detailModal.scrollTop = 0;
         }
-        filterQuotations(); // Re-render filtered cards on resize
+        filterQuotations();
     });
 }
 

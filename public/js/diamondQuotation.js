@@ -84,15 +84,14 @@ document.addEventListener('DOMContentLoaded', function() {
     }
 
     function updateScrollButtonsVisibility() {
-        if (window.scrollY > 100) {
+        
             backToTopBtn.classList.add('visible');
             topToBackBtn.classList.add('visible');
-            document.body.classList.add('scrolled');
-        } else {
-           backToTopBtn.classList.remove('visible');
-            topToBackBtn.classList.remove('visible');
-            document.body.classList.remove('scrolled');
-        }
+            if (window.scrollY > 100) {
+                document.body.classList.add('scrolled');
+            } else {
+                document.body.classList.remove('scrolled');
+            }
     }
     
     function toggleMMInput() {

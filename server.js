@@ -5,15 +5,17 @@ const multer = require('multer');
 const cors = require('cors');
 const path = require('path');
 const { Octokit } = require('@octokit/rest');
-const sharp = require('sharp'); // Added for image compression
+const sharp = require('sharp');
 require('dotenv').config();
 
 // Initialize Express
 const app = express();
 const PORT = process.env.PORT || 3000;
 
+// Construct service account credentials from environment variables
+const serviceAccount = JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT);
+
 // Initialize Firebase Admin
-const serviceAccount = require('./serviceAccountKey.json');
 admin.initializeApp({
     credential: admin.credential.cert(serviceAccount),
     storageBucket: 'lepdo-793ba.appspot.com'
@@ -30,7 +32,7 @@ const bucket = storage.bucket('lepdo-793ba.appspot.com');
 
 // Initialize Octokit for GitHub API
 const octokit = new Octokit({
-    auth: process.env.GITHUB_TOKEN // Removed hardcoded token for security
+    auth: process.env.GITHUB_TOKEN
 });
 
 // Configure Multer for file uploads
@@ -102,7 +104,6 @@ app.post('/api/upload-image', upload.array('images'), async (req, res) => {
                     .resize({ width: 1024, withoutEnlargement: true }) // Resize to max 1024px width, don't enlarge
                     .jpeg({ quality: 80 }) // Convert to JPEG with 80% quality
                     .toBuffer();
-                // console.log(`Compressed ${fileName}: Original size=${file.size} bytes, Compressed size=${compressedBuffer.length} bytes`);
             } catch (sharpErr) {
                 console.error(`Error compressing image ${fileName}:`, sharpErr);
                 throw new Error(`Failed to compress image: ${sharpErr.message}`);
@@ -262,7 +263,6 @@ app.put('/api/diamonds/:id', async (req, res) => {
             for (const doc of metadataSnapshot.docs) {
                 const quotation = doc.data();
                 if (quotation.storedInCloudStorage) {
-                    // console.log(`Quotation ${doc.id}: Stored in Cloud Storage, skipping update`);
                     continue;
                 }
 
@@ -271,12 +271,10 @@ app.put('/api/diamonds/:id', async (req, res) => {
 
                 const updatedDiamondItems = diamondItems.map(item => {
                     if (item.shape.toLowerCase() === 'other' || item.mm.toLowerCase() === 'other') {
-                        // console.log(`Quotation ${doc.id}: Skipping item with shape=${item.shape}, mm=${item.mm} (other)`);
                         return item;
                     }
 
                     if (item.shape === updatedDiamond.SHAPE && item.mm === updatedDiamond.MM) {
-                        // console.log(`Match found in quotation ${doc.id}: shape=${item.shape}, mm=${item.mm}`);
                         const newPricePerCt = updatedDiamond['PRICE/CT'];
                         const newTotal = (parseFloat(item.totalWeightCt) * newPricePerCt).toFixed(2);
                         updatedCount++;
@@ -297,7 +295,6 @@ app.put('/api/diamonds/:id', async (req, res) => {
                 const totalDiamondAmount = updatedDiamondItems
                     .reduce((sum, item) => sum + parseFloat(item.total || 0), 0)
                     .toFixed(2);
-                // console.log(`Quotation ${doc.id}: New totalDiamondAmount=${totalDiamondAmount}`);
 
                 const metalSummarySnapshot = await db.collection('metadata').doc(doc.id).collection('metalSummary').get();
                 const metalSummary = metalSummarySnapshot.docs.map(d => ({ id: d.id, ...d.data() }));
@@ -328,9 +325,7 @@ app.put('/api/diamonds/:id', async (req, res) => {
                 batch.set(db.collection('metadata').doc(doc.id), sanitizeData(updatedQuotation));
             }
 
-            // console.log(`Total diamondItems updated: ${updatedCount}`);
             await batch.commit();
-            // console.log('Metadata collection updated successfully');
         } catch (err) {
             console.error('Error updating metadata collection:', err);
         }
@@ -394,7 +389,6 @@ app.get('/api/metadata', async (req, res) => {
 });
 
 // Delete a quotation
-// Delete a quotation and associated images from GitHub
 app.delete('/api/metadata/:id', async (req, res) => {
     try {
         const id = req.params.id;
@@ -434,10 +428,8 @@ app.delete('/api/metadata/:id', async (req, res) => {
                         sha: data.sha,
                         branch: 'main'
                     });
-                    // console.log(`Successfully deleted image: ${url}`);
                 } catch (err) {
                     console.error(`Error deleting image ${url} from GitHub:`, err);
-                    // Continue with other deletions even if one image fails
                 }
             });
 
@@ -465,9 +457,7 @@ app.delete('/api/metadata/:id', async (req, res) => {
 
 // Save a quotation
 app.post('/api/save-quotation', async (req, res) => {
-    // console.log('--- /api/save-quotation route hit ---');
     const newQuotation = req.body;
-    // console.log('Request body:', JSON.stringify(newQuotation, null, 2));
 
     if (!newQuotation.quotationId || !newQuotation.metalItems || !newQuotation.summary) {
         console.error('Validation failed: Missing quotationId, metalItems, or summary');
@@ -501,7 +491,6 @@ app.post('/api/save-quotation', async (req, res) => {
         });
 
         const mainDocSize = getDocumentSize(mainDoc);
-        // console.log(`Main document size for ${docId}: ${mainDocSize} bytes`);
         if (mainDocSize > 1_000_000) {
             console.warn(`Quotation ${docId} exceeds 1 MB. Storing in Cloud Storage.`);
             const storagePath = `quotations/${docId}.json`;
@@ -514,7 +503,6 @@ app.post('/api/save-quotation', async (req, res) => {
                     storagePath,
                     storedInCloudStorage: true
                 });
-                // console.log(`Stored ${docId} in Cloud Storage at ${storagePath}`);
                 return res.status(200).json({ message: `Quotation ${docId} saved in Cloud Storage` });
             } catch (storageErr) {
                 console.error(`Failed to save ${docId} to Cloud Storage:`, storageErr);
@@ -527,11 +515,9 @@ app.post('/api/save-quotation', async (req, res) => {
             }
         }
 
-        // console.log(`Saving main document for ${docId}:`, mainDoc);
         await docRef.set(mainDoc);
 
         if (Array.isArray(newQuotation.metalItems) && newQuotation.metalItems.length > 0) {
-            // console.log(`Saving ${newQuotation.metalItems.length} metalItems for ${docId}`);
             const batch = db.batch();
             newQuotation.metalItems.forEach((item, index) => {
                 if (!item.purity || !item.grams || !item.ratePerGram) {
@@ -542,13 +528,11 @@ app.post('/api/save-quotation', async (req, res) => {
                 batch.set(itemRef, sanitizeData(item));
             });
             await batch.commit();
-            // console.log(`Saved metalItems for ${docId}`);
         } else {
             console.warn(`No valid metalItems provided for ${docId}`);
         }
 
         if (Array.isArray(newQuotation.diamondItems) && newQuotation.diamondItems.length > 0) {
-            // console.log(`Saving ${newQuotation.diamondItems.length} diamondItems for ${docId}`);
             const batch = db.batch();
             newQuotation.diamondItems.forEach((item, index) => {
                 if (!item.shape || !item.mm || !item.pricePerCt || !item.totalWeightCt) {
@@ -559,13 +543,11 @@ app.post('/api/save-quotation', async (req, res) => {
                 batch.set(itemRef, sanitizeData(item));
             });
             await batch.commit();
-            // console.log(`Saved diamondItems for ${docId}`);
         } else {
             console.warn(`No valid diamondItems provided for ${docId}`);
         }
 
         if (Array.isArray(newQuotation.summary?.metalSummary) && newQuotation.summary.metalSummary.length > 0) {
-            // console.log(`Saving ${newQuotation.summary.metalSummary.length} metalSummary items for ${docId}`);
             const batch = db.batch();
             newQuotation.summary.metalSummary.forEach((item, index) => {
                 if (!item.purity || !item.grams || !item.ratePerGram) {
@@ -576,12 +558,10 @@ app.post('/api/save-quotation', async (req, res) => {
                 batch.set(itemRef, sanitizeData(item));
             });
             await batch.commit();
-            // console.log(`Saved metalSummary for ${docId}`);
         } else {
             console.warn(`No valid metalSummary provided for ${docId}`);
         }
 
-        // console.log(`Quotation ${docId} saved successfully`);
         return res.status(200).json({ message: `Quotation ${docId} saved successfully` });
     } catch (err) {
         console.error('Error saving quotation:', err);
@@ -622,7 +602,6 @@ app.post('/api/prices', async (req, res) => {
         for (const doc of metadataSnapshot.docs) {
             const quotation = doc.data();
             if (quotation.storedInCloudStorage) {
-                // console.log(`Quotation ${doc.id}: Stored in Cloud Storage, skipping update`);
                 continue;
             }
 
@@ -696,7 +675,6 @@ app.get(/^(?!\/api).*/, (req, res) => {
 app.listen(PORT, async () => {
     try {
         console.log(`Server is running on http://localhost:${PORT}`);
-        // console.log('Ensure this message appears after every server restart.');
     } catch (err) {
         console.error('Failed to start server:', err);
         process.exit(1);

@@ -372,16 +372,16 @@ $(document).ready(function() {
     function updateMetalSummaryTable() {
         const $summaryTableBody = $('#metalSummaryTable tbody');
         $summaryTableBody.empty();
-
+    
         const headers = getTableHeaders($('#metalSummaryTable'));
         const totalDiamondAmount = parseFloat($('#totalDiamondAmount').val()) || 0;
-
+    
         $('#metalTable tbody tr').each(function() {
             const $row = $(this);
             const totalMetal = parseFloat($row.find('td:nth-child(4)').text()) || 0;
             const makingCharges = parseFloat($row.find('td:nth-child(5)').text()) || 0;
             const total = (totalMetal + makingCharges + totalDiamondAmount).toFixed(2);
-
+    
             const values = [
                 $row.find('td:nth-child(1)').text(),
                 $row.find('td:nth-child(2)').text(),
@@ -391,7 +391,7 @@ $(document).ready(function() {
                 totalDiamondAmount.toFixed(2),
                 total
             ];
-
+    
             let rowHtml = '<tr>';
             values.forEach((val, index) => {
                 rowHtml += `<td data-label="${headers[index] || ''}">${val}</td>`;

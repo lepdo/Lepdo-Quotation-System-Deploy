@@ -280,34 +280,34 @@ document.addEventListener('DOMContentLoaded', function() {
     
     async function handleFormSubmit(e) {
         e.preventDefault();
-        
+    
         const shape = shapeInput.value;
         const mm = shape === 'ROUND' ? parseFloat(mmNumberInput.value) : mmTextInput.value;
         const price = parseFloat(priceInput.value);
-        
+    
         const diamondData = {
             SHAPE: shape,
             MM: mm,
             'PRICE/CT': price
         };
-        
+    
         // Validate inputs
         if (!diamondData.SHAPE || !diamondData.MM || isNaN(diamondData['PRICE/CT'])) {
             showToast('Please fill all fields with valid values', 'error');
             return;
         }
-        
+    
         if (shape === 'ROUND' && isNaN(diamondData.MM)) {
             showToast('MM must be a number for ROUND shape', 'error');
             return;
         }
-        
+    
         showLoading();
-        
+    
         try {
             let response;
             let successMessage;
-            
+    
             if (isEditMode) {
                 const id = parseInt(diamondIdInput.value);
                 response = await fetch(`/api/diamonds/${id}`, {
@@ -328,20 +328,37 @@ document.addEventListener('DOMContentLoaded', function() {
                 });
                 successMessage = 'Diamond added successfully';
             }
-            
+    
             if (!response.ok) {
                 const errorData = await response.json();
-                throw new Error(errorData.error || 'Failed to save diamond');
+                const errorMessage = errorData.error?.message || 'Unknown error occurred';
+                throw new Error(errorMessage);
             }
-            
+    
             closeModal();
             await fetchDiamonds();
+            // Fetch metadata to refresh any UI displaying quotations
+            await fetchMetadata();
             showToast(successMessage, 'success');
         } catch (error) {
             showToast(`Error saving diamond: ${error.message}`, 'error');
             console.error('Error:', error);
         } finally {
             hideLoading();
+        }
+    }
+    
+    // Add function to fetch metadata
+    async function fetchMetadata() {
+        try {
+            const response = await fetch('/api/metadata');
+            if (!response.ok) throw new Error('Failed to fetch metadata');
+            const metadata = await response.json();
+            // Update UI if you have a metadata table or display
+            // Example: renderMetadata(metadata);
+        } catch (error) {
+            showToast('Error loading metadata', 'error');
+            console.error('Error:', error);
         }
     }
     

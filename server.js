@@ -48,7 +48,7 @@ app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 app.use(express.static(path.join(__dirname, 'public')));
 
 // Valid shapes for diamonds
-const VALID_SHAPES = ['ROUND', 'OVAL', 'PEAR', 'EMERALD', 'PRINCESS', 'CUSHION'];
+const VALID_SHAPES = ['ROUND', 'OVAL', 'PEAR', 'EMERALD', 'PRINCESS', 'CUSHION', 'ASSCHER'];
 
 // Helper function to estimate document size (in bytes)
 function getDocumentSize(doc) {
@@ -191,17 +191,22 @@ app.get('/api/diamonds', async (req, res) => {
 });
 
 // Add a new diamond
+// Remove the VALID_SHAPES array
+// const VALID_SHAPES = ['ROUND', 'OVAL', 'PEAR', 'EMERALD', 'PRINCESS', 'CUSHION'];
+
+// In the POST /api/diamonds endpoint
 app.post('/api/diamonds', async (req, res) => {
     try {
         const newDiamond = req.body;
 
-        if (!newDiamond.SHAPE || !VALID_SHAPES.includes(newDiamond.SHAPE) ||
-            newDiamond.MM === undefined || typeof newDiamond['PRICE/CT'] !== 'number') {
+        // Validate required fields but skip shape validation
+        if (!newDiamond.SHAPE || newDiamond.MM === undefined || typeof newDiamond['PRICE/CT'] !== 'number') {
             return res.status(400).json({
-                error: { message: 'Invalid input: SHAPE must be one of ' + VALID_SHAPES.join(', ') + ', MM and PRICE/CT are required, and PRICE/CT must be a number' }
+                error: { message: 'Invalid input: SHAPE, MM, and PRICE/CT are required, and PRICE/CT must be a number' }
             });
         }
 
+        // Validate MM for ROUND shape
         if (newDiamond.SHAPE === 'ROUND' && typeof newDiamond.MM !== 'number') {
             return res.status(400).json({
                 error: { message: 'MM must be a number for ROUND shape' }
@@ -221,122 +226,309 @@ app.post('/api/diamonds', async (req, res) => {
     }
 });
 
-// Update a diamond
+// In the PUT /api/diamonds/:id endpoint
+// Helper function to normalize MM values for comparison
+
+
+// Updated PUT /api/diamonds/:id endpoint
+// Helper function to normalize MM values for comparison
+// Helper function to normalize MM values for comparison
+// Helper function to normalize MM values for comparison
+// Helper function to normalize MM values for comparison
+// Helper function to normalize MM values for comparison
+// Helper function to normalize MM values for comparison
+function normalizeMM(mm) {
+    if (typeof mm === 'string') {
+        const parts = mm.split('x').map(part => parseFloat(part.trim()).toFixed(2));
+        return parts.length > 1 ? parts.join(' x ') : parts[0];
+    }
+    return parseFloat(mm).toFixed(2);
+}
+
+// Helper function to sanitize data
+function sanitizeData(obj) {
+    if (obj === null || obj === undefined) return null;
+    if (Array.isArray(obj)) return obj.map(item => sanitizeData(item));
+    if (typeof obj !== 'object' || obj instanceof Date) return obj;
+    
+    const result = {};
+    for (const [key, value] of Object.entries(obj)) {
+        if (value === undefined || value === null) {
+            result[key] = null;
+        } else if (typeof value === 'object' && !(value instanceof Date)) {
+            result[key] = sanitizeData(value);
+        } else if (typeof value !== 'function' && !Number.isNaN(value)) {
+            result[key] = value;
+        }
+    }
+    return result;
+}
+async function updateDiamondAndRefresh(id, diamondData) {
+    await fetch(`/api/diamonds/${id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(diamondData)
+    });
+
+    // Wait briefly to ensure Firestore updates propagate
+    await new Promise(resolve => setTimeout(resolve, 1000));
+
+    const response = await fetch('/api/metadata', {
+        headers: { 'Cache-Control': 'no-cache' }
+    });
+    const metadata = await response.json();
+    // Update UI with metadata
+}
 app.put('/api/diamonds/:id', async (req, res) => {
     try {
         const id = req.params.id;
         const updatedDiamond = req.body;
 
-        if (!updatedDiamond.SHAPE || !VALID_SHAPES.includes(updatedDiamond.SHAPE) ||
-            updatedDiamond.MM === undefined || typeof updatedDiamond['PRICE/CT'] !== 'number') {
+        // Normalize and validate input
+        updatedDiamond.SHAPE = updatedDiamond.SHAPE?.trim().toUpperCase();
+        if (!updatedDiamond.SHAPE || updatedDiamond.MM === undefined || typeof updatedDiamond['PRICE/CT'] !== 'number') {
             return res.status(400).json({
-                error: { message: 'Invalid input: SHAPE must be one of ' + VALID_SHAPES.join(', ') + ', MM and PRICE/CT are required, and PRICE/CT must be a number' }
+                error: { message: 'Invalid input: SHAPE, MM, and PRICE/CT are required, and PRICE/CT must be a number' }
             });
-        }
-
-        if (updatedDiamond.SHAPE === 'ROUND' && typeof updatedDiamond.MM !== 'number') {
-            return res.status(400).json({
-                error: { message: 'MM must be a number for ROUND shape' }
-            });
-        }
-
-        const diamondRef = db.collection('diamonds').doc(id);
-        const diamondDoc = await diamondRef.get();
-        if (!diamondDoc.exists) {
-            return res.status(404).json({ error: { message: 'Diamond not found' } });
         }
 
         const diamondData = {
             id: parseInt(id),
             SHAPE: updatedDiamond.SHAPE,
             MM: updatedDiamond.MM,
-            'PRICE/CT': updatedDiamond['PRICE/CT'],
+            'PRICE/CT': parseFloat(updatedDiamond['PRICE/CT']).toFixed(2),
             'MM & SHAPE': `${updatedDiamond.SHAPE}-${updatedDiamond.MM} MM`
         };
-        await diamondRef.set(sanitizeData(diamondData));
 
-        try {
-            const metadataSnapshot = await db.collection('metadata').get();
-            const batch = db.batch();
-            let updatedCount = 0;
+        let batchUpdates = [];
 
-            for (const doc of metadataSnapshot.docs) {
+        const result = await db.runTransaction(async (transaction) => {
+            const diamondRef = db.collection('diamonds').doc(id);
+            const diamondDoc = await transaction.get(diamondRef);
+            if (!diamondDoc.exists) {
+                throw new Error('Diamond not found');
+            }
+
+            const metadataSnapshot = await transaction.get(db.collection('metadata'));
+            const metadataDocs = metadataSnapshot.docs.filter(doc => !doc.data().storedInCloudStorage);
+
+            const metadataWithSubcollections = [];
+            for (const doc of metadataDocs) {
+                const diamondItemsSnapshot = await transaction.get(
+                    db.collection('metadata').doc(doc.id).collection('diamondItems')
+                );
+                const metalSummarySnapshot = await transaction.get(
+                    db.collection('metadata').doc(doc.id).collection('metalSummary')
+                );
+                console.log(`Pre-transaction: metalSummary docs in ${doc.id}:`, metalSummarySnapshot.docs.map(d => d.id));
+                metadataWithSubcollections.push({
+                    doc,
+                    diamondItems: diamondItemsSnapshot.docs.map(d => ({ id: d.id, ...d.data() })),
+                    metalSummaries: metalSummarySnapshot.docs.map(d => ({ id: d.id, ...d.data() }))
+                });
+            }
+
+            transaction.set(diamondRef, sanitizeData(diamondData));
+            console.log(`Diamond document ${id} set in transaction`);
+
+            let writeCount = 1;
+
+            for (const { doc, diamondItems, metalSummaries } of metadataWithSubcollections) {
                 const quotation = doc.data();
-                if (quotation.storedInCloudStorage) {
-                    continue;
-                }
+                console.log(`Processing Firestore metadata document ${doc.id}`);
 
-                const diamondItemsSnapshot = await db.collection('metadata').doc(doc.id).collection('diamondItems').get();
-                const diamondItems = diamondItemsSnapshot.docs.map(d => ({ id: d.id, ...d.data() }));
-
+                let metadataUpdated = false;
+                let totalDiamondAmount = 0;
                 const updatedDiamondItems = diamondItems.map(item => {
-                    if (item.shape.toLowerCase() === 'other' || item.mm.toLowerCase() === 'other') {
-                        return item;
-                    }
-
-                    if (item.shape === updatedDiamond.SHAPE && item.mm === updatedDiamond.MM) {
-                        const newPricePerCt = updatedDiamond['PRICE/CT'];
-                        const newTotal = (parseFloat(item.totalWeightCt) * newPricePerCt).toFixed(2);
-                        updatedCount++;
-                        return {
-                            ...item,
-                            pricePerCt: newPricePerCt.toFixed(2),
-                            total: newTotal
-                        };
+                    if (
+                        item.shape &&
+                        item.mm &&
+                        item.totalWeightCt &&
+                        item.shape.toUpperCase() === diamondData.SHAPE &&
+                        normalizeMM(item.mm) === normalizeMM(diamondData.MM)
+                    ) {
+                        console.log(`Matching diamondItem ${item.id} in metadata ${doc.id}`);
+                        const newPricePerCt = parseFloat(diamondData['PRICE/CT']).toFixed(2);
+                        const newTotal = (parseFloat(item.totalWeightCt) * parseFloat(newPricePerCt)).toFixed(2);
+                        metadataUpdated = true;
+                        return { ...item, pricePerCt: newPricePerCt, total: newTotal };
                     }
                     return item;
                 });
 
-                updatedDiamondItems.forEach(item => {
-                    const itemRef = db.collection('metadata').doc(doc.id).collection('diamondItems').doc(item.id);
-                    batch.set(itemRef, sanitizeData(item));
-                });
-
-                const totalDiamondAmount = updatedDiamondItems
-                    .reduce((sum, item) => sum + parseFloat(item.total || 0), 0)
+                totalDiamondAmount = updatedDiamondItems
+                    .reduce((sum, item) => sum + (parseFloat(item.total) || 0), 0)
                     .toFixed(2);
+                console.log(`Calculated totalDiamondAmount for metadata ${doc.id}: ${totalDiamondAmount}`);
 
-                const metalSummarySnapshot = await db.collection('metadata').doc(doc.id).collection('metalSummary').get();
-                const metalSummary = metalSummarySnapshot.docs.map(d => ({ id: d.id, ...d.data() }));
-                const updatedMetalSummary = metalSummary.map(summary => {
-                    const newTotal = (
-                        parseFloat(summary.totalMetal || 0) +
-                        parseFloat(summary.makingCharges || 0) +
-                        parseFloat(totalDiamondAmount)
-                    ).toFixed(2);
-                    return {
-                        ...summary,
-                        totalDiamondAmount: totalDiamondAmount,
-                        total: newTotal
+                if (metadataUpdated) {
+                    updatedDiamondItems.forEach(item => {
+                        const itemRef = db.collection('metadata').doc(doc.id).collection('diamondItems').doc(item.id);
+                        console.log(`Setting diamondItem ${item.id} in metadata ${doc.id}:`, item);
+                        transaction.set(itemRef, sanitizeData(item));
+                        batchUpdates.push(`diamondItem ${item.id} in metadata ${doc.id}`);
+                        writeCount++;
+                    });
+
+                    // Original lines for updating only summary.totalDiamondAmount (previously 381-385) are removed.
+                    // We first calculate updatedMetalSummaries, then update the main document's summary comprehensively.
+
+                    const updatedMetalSummaries = metalSummaries.map(summary => {
+                        const newTotal = (
+                            parseFloat(summary.totalMetal || 0) +
+                            parseFloat(summary.makingCharges || 0) +
+                            parseFloat(totalDiamondAmount) // totalDiamondAmount for the entire quotation
+                        ).toFixed(2);
+                        console.log(`Preparing metalSummary ${summary.id} in metadata ${doc.id}: totalDiamondAmount=${totalDiamondAmount}, total=${newTotal}`);
+                        return {
+                            ...summary, // Spread existing fields from the subcollection item
+                            totalDiamondAmount: totalDiamondAmount, // This is the overall totalDiamondAmount
+                            total: newTotal,
+                            updatedAt: new Date().toISOString()
+                        };
+                    });
+
+                    // Update main metadata document's summary (totalDiamondAmount and metalSummary array)
+                    const mainDocUpdates = {
+                        'summary.totalDiamondAmount': totalDiamondAmount,
+                        'summary.metalSummary': updatedMetalSummaries.map(s => {
+                            const { id, ...summaryData } = s; // Remove 'id' property from subcollection item for the array
+                            return sanitizeData(summaryData);
+                        })
                     };
-                });
-                updatedMetalSummary.forEach(summary => {
-                    const summaryRef = db.collection('metadata').doc(doc.id).collection('metalSummary').doc(summary.id);
-                    batch.set(summaryRef, sanitizeData(summary));
-                });
+                    transaction.update(db.collection('metadata').doc(doc.id), mainDocUpdates);
+                    batchUpdates.push(`summary in metadata ${doc.id} (totalDiamondAmount and metalSummary array) updated`);
+                    writeCount++; // Counts as one update operation for the main document
 
-                const updatedQuotation = {
-                    ...quotation,
-                    summary: {
-                        ...quotation.summary,
-                        totalDiamondAmount: totalDiamondAmount
-                    }
-                };
-                batch.set(db.collection('metadata').doc(doc.id), sanitizeData(updatedQuotation));
+                    updatedMetalSummaries.forEach(summary => {
+                        if (!summary.totalDiamondAmount || !summary.total) {
+                            console.error(`Invalid metalSummary ${summary.id} in metadata ${doc.id}:`, summary);
+                            throw new Error(`Invalid metalSummary ${summary.id} in metadata ${doc.id}`);
+                        }
+                        const summaryRef = db.collection('metadata').doc(doc.id).collection('metalSummary').doc(summary.id);
+                        console.log(`Setting metalSummary ${summary.id} in metadata ${doc.id}:`, summary);
+                        transaction.set(summaryRef, sanitizeData(summary));
+                        batchUpdates.push(`metalSummary ${summary.id} in metadata ${doc.id}`);
+                        writeCount++;
+                    });
+                }
+
+                console.log(`Write count for metadata ${doc.id}: ${writeCount}`);
             }
 
-            await batch.commit();
-        } catch (err) {
-            console.error('Error updating metadata collection:', err);
+            console.log(`Total writes in transaction: ${writeCount}`);
+            return { diamondData, batchUpdates };
+        });
+
+        // Handle Cloud Storage updates
+        const cloudUpdates = [];
+        const metadataCloudSnapshot = await db.collection('metadata')
+            .where('storedInCloudStorage', '==', true)
+            .get();
+
+        for (const doc of metadataCloudSnapshot.docs) {
+            const quotation = doc.data();
+            if (!quotation.storagePath) {
+                console.warn(`No storagePath for metadata ${doc.id}, skipping`);
+                continue;
+            }
+
+            try {
+                console.log(`Processing Cloud Storage metadata ${doc.id}`);
+                const file = bucket.file(quotation.storagePath);
+                const [contents] = await file.download();
+                let metadata = JSON.parse(contents.toString());
+
+                let metadataUpdated = false;
+                let totalDiamondAmount = 0;
+                const updatedDiamondItems = metadata.diamondItems.map(item => {
+                    if (
+                        item.shape &&
+                        item.mm &&
+                        item.totalWeightCt &&
+                        item.shape.toUpperCase() === diamondData.SHAPE &&
+                        normalizeMM(item.mm) === normalizeMM(diamondData.MM)
+                    ) {
+                        const newPricePerCt = parseFloat(diamondData['PRICE/CT']).toFixed(2);
+                        const newTotal = (parseFloat(item.totalWeightCt) * parseFloat(newPricePerCt)).toFixed(2);
+                        metadataUpdated = true;
+                        return { ...item, pricePerCt: newPricePerCt, total: newTotal };
+                    }
+                    return item;
+                });
+                metadata.diamondItems = updatedDiamondItems;
+
+                totalDiamondAmount = updatedDiamondItems
+                    .reduce((sum, item) => sum + (parseFloat(item.total) || 0), 0)
+                    .toFixed(2);
+
+                if (metadataUpdated) {
+                    metadata.summary.totalDiamondAmount = totalDiamondAmount;
+                    metadata.summary.metalSummary = metadata.summary.metalSummary.map(summary => {
+                        const newTotal = (
+                            parseFloat(summary.totalMetal || 0) +
+                            parseFloat(summary.makingCharges || 0) +
+                            parseFloat(totalDiamondAmount)
+                        ).toFixed(2);
+                        return {
+                            ...summary,
+                            totalDiamondAmount: totalDiamondAmount,
+                            total: newTotal,
+                            updatedAt: new Date().toISOString()
+                        };
+                    });
+
+                    await bucket.file(quotation.storagePath).save(JSON.stringify(metadata), {
+                        contentType: 'application/json'
+                    });
+                    cloudUpdates.push({
+                        ref: db.collection('metadata').doc(doc.id),
+                        data: { 'summary.totalDiamondAmount': totalDiamondAmount }
+                    });
+                }
+            } catch (storageErr) {
+                console.error(`Error processing Cloud Storage metadata ${doc.id}:`, storageErr);
+            }
         }
 
-        res.json(diamondData);
+        if (cloudUpdates.length > 0) {
+            const batch = db.batch();
+            cloudUpdates.forEach(update => {
+                batch.update(update.ref, update.data);
+            });
+            await batch.commit();
+        }
+
+        // Verify updates with additional logging
+        for (const update of result.batchUpdates) {
+            if (update.includes('metalSummary')) {
+                const [_, itemId, , , metadataId] = update.split(' ');
+                const summaryRef = db.collection('metadata').doc(metadataId).collection('metalSummary').doc(itemId);
+                const summaryDoc = await summaryRef.get();
+                if (summaryDoc.exists) {
+                    console.log(`Verified metalSummary ${itemId} in ${metadataId}:`, summaryDoc.data());
+                } else {
+                    console.error(`Verification failed: metalSummary ${itemId} in ${metadataId} not found`);
+                }
+            }
+        }
+
+        res.json({
+            diamond: result.diamondData,
+            updatedMetadata: result.batchUpdates,
+            updatedCloudMetadata: cloudUpdates.map(update => update.ref.id)
+        });
     } catch (err) {
-        console.error('Error updating diamond:', err);
-        res.status(500).json({ error: { message: 'Failed to update diamond' } });
+        console.error('Error updating diamond:', err.stack);
+        if (err.message === 'Diamond not found') {
+            return res.status(404).json({ error: { message: 'Diamond not found' } });
+        }
+        if (err.code === 8 && err.message.includes('Quota exceeded')) {
+            return res.status(429).json({ error: { message: 'Firestore quota exceeded. Please try again later or upgrade your plan.' } });
+        }
+        return res.status(500).json({ error: { message: 'Failed to update diamond', details: err.message, stack: err.stack } });
     }
 });
-
 // Delete a diamond
 app.delete('/api/diamonds/:id', async (req, res) => {
     try {
@@ -357,6 +549,7 @@ app.delete('/api/diamonds/:id', async (req, res) => {
 
 // Get all quotations
 app.get('/api/metadata', async (req, res) => {
+    res.set('Cache-Control', 'no-cache');
     try {
         const snapshot = await db.collection('metadata').get();
         const metadata = [];
@@ -372,12 +565,15 @@ app.get('/api/metadata', async (req, res) => {
                     continue;
                 }
             } else {
-                const diamondItemsSnapshot = await db.collection('metadata').doc(doc.id).collection('diamondItems').get();
-                data.diamondItems = diamondItemsSnapshot.docs.map(d => d.data());
-                const metalItemsSnapshot = await db.collection('metadata').doc(doc.id).collection('metalItems').get();
-                data.metalItems = metalItemsSnapshot.docs.map(d => d.data());
-                const metalSummarySnapshot = await db.collection('metadata').doc(doc.id).collection('metalSummary').get();
-                data.summary.metalSummary = metalSummarySnapshot.docs.map(d => d.data());
+                // Fetch subcollections with consistent reads
+                const [diamondItemsSnapshot, metalItemsSnapshot, metalSummarySnapshot] = await Promise.all([
+                    db.collection('metadata').doc(doc.id).collection('diamondItems').get(),
+                    db.collection('metadata').doc(doc.id).collection('metalItems').get(),
+                    db.collection('metadata').doc(doc.id).collection('metalSummary').get()
+                ]);
+                data.diamondItems = diamondItemsSnapshot.docs.map(d => ({ id: d.id, ...d.data() }));
+                data.metalItems = metalItemsSnapshot.docs.map(d => ({ id: d.id, ...d.data() }));
+                data.summary.metalSummary = metalSummarySnapshot.docs.map(d => ({ id: d.id, ...d.data() }));
                 metadata.push(data);
             }
         }
@@ -459,10 +655,19 @@ app.delete('/api/metadata/:id', async (req, res) => {
 app.post('/api/save-quotation', async (req, res) => {
     const newQuotation = req.body;
 
+    // Validate required fields
     if (!newQuotation.quotationId || !newQuotation.metalItems || !newQuotation.summary) {
         console.error('Validation failed: Missing quotationId, metalItems, or summary');
         return res.status(400).json({ 
             error: { message: 'Invalid quotation: quotationId, metalItems, and summary are required' }
+        });
+    }
+
+    // Validate metalSummary
+    if (!Array.isArray(newQuotation.summary.metalSummary) || newQuotation.summary.metalSummary.length === 0) {
+        console.error('Validation failed: metalSummary is empty or not an array');
+        return res.status(400).json({ 
+            error: { message: 'Invalid quotation: At least one metalSummary item is required' }
         });
     }
 
@@ -476,6 +681,16 @@ app.post('/api/save-quotation', async (req, res) => {
             return res.status(400).json({ error: { message: `Quotation ${docId} already exists` } });
         }
 
+        // Normalize diamondItems shapes
+        if (Array.isArray(newQuotation.diamondItems)) {
+            newQuotation.diamondItems.forEach(item => {
+                if (item.shape) {
+                    item.shape = item.shape.trim().toUpperCase();
+                }
+            });
+        }
+
+        // Prepare main document for Firestore
         const mainDoc = sanitizeData({
             quotationId: newQuotation.quotationId,
             identification: {
@@ -485,8 +700,10 @@ app.post('/api/save-quotation', async (req, res) => {
             },
             quotationDate: newQuotation.quotationDate ? new Date(newQuotation.quotationDate) : null,
             summary: {
-                ...newQuotation.summary,
-                metalSummary: null
+                idSku: newQuotation.summary.idSku,
+                category: newQuotation.summary.category,
+                totalDiamondAmount: newQuotation.summary.totalDiamondAmount,
+                metalSummary: newQuotation.summary.metalSummary // Include metalSummary
             }
         });
 
@@ -494,29 +711,29 @@ app.post('/api/save-quotation', async (req, res) => {
         if (mainDocSize > 1_000_000) {
             console.warn(`Quotation ${docId} exceeds 1 MB. Storing in Cloud Storage.`);
             const storagePath = `quotations/${docId}.json`;
-            try {
-                await bucket.file(storagePath).save(JSON.stringify(newQuotation), {
-                    contentType: 'application/json'
-                });
-                await docRef.set({
-                    quotationId: docId,
-                    storagePath,
-                    storedInCloudStorage: true
-                });
-                return res.status(200).json({ message: `Quotation ${docId} saved in Cloud Storage` });
-            } catch (storageErr) {
-                console.error(`Failed to save ${docId} to Cloud Storage:`, storageErr);
-                return res.status(500).json({ 
-                    error: { 
-                        message: 'Failed to save quotation to Cloud Storage', 
-                        details: storageErr.message 
-                    }
-                });
-            }
+            // Ensure metalSummary is included in Cloud Storage
+            const cloudData = {
+                ...newQuotation,
+                summary: {
+                    ...newQuotation.summary,
+                    metalSummary: newQuotation.summary.metalSummary
+                }
+            };
+            await bucket.file(storagePath).save(JSON.stringify(cloudData), {
+                contentType: 'application/json'
+            });
+            await docRef.set({
+                quotationId: docId,
+                storagePath,
+                storedInCloudStorage: true
+            });
+            return res.status(200).json({ message: `Quotation ${docId} saved in Cloud Storage` });
         }
 
+        // Save main document to Firestore
         await docRef.set(mainDoc);
 
+        // Save metalItems subcollection
         if (Array.isArray(newQuotation.metalItems) && newQuotation.metalItems.length > 0) {
             const batch = db.batch();
             newQuotation.metalItems.forEach((item, index) => {
@@ -528,10 +745,9 @@ app.post('/api/save-quotation', async (req, res) => {
                 batch.set(itemRef, sanitizeData(item));
             });
             await batch.commit();
-        } else {
-            console.warn(`No valid metalItems provided for ${docId}`);
         }
 
+        // Save diamondItems subcollection
         if (Array.isArray(newQuotation.diamondItems) && newQuotation.diamondItems.length > 0) {
             const batch = db.batch();
             newQuotation.diamondItems.forEach((item, index) => {
@@ -543,11 +759,10 @@ app.post('/api/save-quotation', async (req, res) => {
                 batch.set(itemRef, sanitizeData(item));
             });
             await batch.commit();
-        } else {
-            console.warn(`No valid diamondItems provided for ${docId}`);
         }
 
-        if (Array.isArray(newQuotation.summary?.metalSummary) && newQuotation.summary.metalSummary.length > 0) {
+        // Save metalSummary subcollection
+        if (Array.isArray(newQuotation.summary.metalSummary) && newQuotation.summary.metalSummary.length > 0) {
             const batch = db.batch();
             newQuotation.summary.metalSummary.forEach((item, index) => {
                 if (!item.purity || !item.grams || !item.ratePerGram) {
@@ -558,8 +773,6 @@ app.post('/api/save-quotation', async (req, res) => {
                 batch.set(itemRef, sanitizeData(item));
             });
             await batch.commit();
-        } else {
-            console.warn(`No valid metalSummary provided for ${docId}`);
         }
 
         return res.status(200).json({ message: `Quotation ${docId} saved successfully` });
@@ -584,6 +797,7 @@ app.get('/api/prices', async (req, res) => {
 });
 
 // Update metal prices
+// Update metal prices
 app.post('/api/prices', async (req, res) => {
     try {
         const newPrices = req.body;
@@ -594,67 +808,115 @@ app.post('/api/prices', async (req, res) => {
             });
         }
 
+        // Save new prices
         await db.collection('metalPrices').doc('prices').set(sanitizeData(newPrices));
 
-        const metadataSnapshot = await db.collection('metadata').get();
-        const batch = db.batch();
+        // Use a transaction to update metadata atomically
+        await db.runTransaction(async (transaction) => {
+            const metadataSnapshot = await transaction.get(db.collection('metadata'));
+            const metadataDocsToUpdate = metadataSnapshot.docs.filter(doc => !doc.data().storedInCloudStorage);
 
-        for (const doc of metadataSnapshot.docs) {
-            const quotation = doc.data();
-            if (quotation.storedInCloudStorage) {
-                continue;
+            const allReads = [];
+            for (const doc of metadataDocsToUpdate) {
+                allReads.push(
+                    transaction.get(db.collection('metadata').doc(doc.id).collection('metalItems')),
+                    transaction.get(db.collection('metadata').doc(doc.id).collection('metalSummary'))
+                );
             }
 
-            const metalItemsSnapshot = await db.collection('metadata').doc(doc.id).collection('metalItems').get();
-            const metalItems = metalItemsSnapshot.docs.map(d => ({ id: d.id, ...d.data() }));
-            const updatedMetalItems = metalItems.map(metal => {
-                const newRate = newPrices[metal.purity];
-                if (!newRate) {
-                    throw new Error(`Price for ${metal.purity} not found in metalPrice`);
+            const allSnapshots = await Promise.all(allReads);
+            let snapshotIndex = 0;
+
+            const updatesToWrite = [];
+
+            for (const doc of metadataDocsToUpdate) {
+                const quotation = doc.data(); // Original quotation data from the first read
+                console.log(`Processing metadata ${doc.id} for price update (read phase complete)`);
+
+                const metalItemsSnapshot = allSnapshots[snapshotIndex++];
+                const metalSummarySnapshot = allSnapshots[snapshotIndex++];
+
+                const metalItems = metalItemsSnapshot.docs.map(d => ({ id: d.id, ...d.data() }));
+                const updatedMetalItems = metalItems.map(metal => {
+                    const newRate = newPrices[metal.purity];
+                    if (newRate === undefined) { // Check for undefined explicitly
+                        console.error(`Price for purity ${metal.purity} not found in newPrices for metalItem ${metal.id} in ${doc.id}. Available prices:`, newPrices);
+                        throw new Error(`Price for ${metal.purity} not found in metalPrice`);
+                    }
+                    const newTotalMetal = (parseFloat(metal.grams) * parseFloat(newRate)).toFixed(2);
+                    const newTotal = (
+                        parseFloat(newTotalMetal) +
+                        parseFloat(metal.makingCharges || 0)
+                    ).toFixed(2);
+                    return {
+                        ...metal,
+                        ratePerGram: parseFloat(newRate).toFixed(2),
+                        totalMetal: newTotalMetal,
+                        total: newTotal
+                    };
+                });
+
+                updatedMetalItems.forEach(metal => {
+                    updatesToWrite.push({
+                        ref: db.collection('metadata').doc(doc.id).collection('metalItems').doc(metal.id),
+                        data: sanitizeData(metal)
+                    });
+                });
+
+                const metalSummaries = metalSummarySnapshot.docs.map(d => ({ id: d.id, ...d.data() }));
+                const updatedMetalSummaries = metalSummaries.map(summary => {
+                    const newRate = newPrices[summary.purity];
+                    if (newRate === undefined) { // Check for undefined explicitly
+                        console.error(`Price for purity ${summary.purity} not found in newPrices for metalSummary ${summary.id} in ${doc.id}. Available prices:`, newPrices);
+                        throw new Error(`Price for ${summary.purity} not found in metalPrice`);
+                    }
+                    const newTotalMetal = (parseFloat(summary.grams) * parseFloat(newRate)).toFixed(2);
+                    const newTotal = (
+                        parseFloat(newTotalMetal) +
+                        parseFloat(summary.makingCharges || 0) +
+                        parseFloat(summary.totalDiamondAmount || 0)
+                    ).toFixed(2);
+                    return {
+                        ...summary,
+                        ratePerGram: parseFloat(newRate).toFixed(2),
+                        totalMetal: newTotalMetal,
+                        total: newTotal,
+                        updatedAt: new Date().toISOString()
+                    };
+                });
+
+                updatedMetalSummaries.forEach(summary => {
+                    updatesToWrite.push({
+                        ref: db.collection('metadata').doc(doc.id).collection('metalSummary').doc(summary.id),
+                        data: sanitizeData(summary)
+                    });
+                });
+                
+                // Prepare the main metadata document update.
+                // It needs to reflect the changes in its metalSummary array if it's stored directly.
+                const mainDocData = { ...quotation }; // Start with existing data
+                if (mainDocData.summary && Array.isArray(mainDocData.summary.metalSummary)) {
+                    mainDocData.summary.metalSummary = updatedMetalSummaries.map(s => {
+                        const { id, ...summaryData } = s; // Remove 'id' if it's from subcollection
+                        return sanitizeData(summaryData);
+                    });
                 }
-                const newTotalMetal = (parseFloat(metal.grams) * parseFloat(newRate)).toFixed(2);
-                const newTotal = (parseFloat(newTotalMetal) + parseFloat(metal.makingCharges || 0)).toFixed(2);
-                return {
-                    ...metal,
-                    ratePerGram: newRate.toFixed(2),
-                    totalMetal: newTotalMetal,
-                    total: newTotal
-                };
-            });
-            updatedMetalItems.forEach(metal => {
-                const itemRef = db.collection('metadata').doc(doc.id).collection('metalItems').doc(metal.id);
-                batch.set(itemRef, sanitizeData(metal));
-            });
+                // If other fields in the main doc depend on these prices, update them here.
+                // For now, we are just updating the metalSummary array within the summary.
 
-            const metalSummarySnapshot = await db.collection('metadata').doc(doc.id).collection('metalSummary').get();
-            const metalSummary = metalSummarySnapshot.docs.map(d => ({ id: d.id, ...d.data() }));
-            const updatedMetalSummary = metalSummary.map(summary => {
-                const newRate = newPrices[summary.purity];
-                if (!newRate) {
-                    throw new Error(`Price for ${summary.purity} not found in metalPrice`);
-                }
-                const newTotalMetal = (parseFloat(summary.grams) * parseFloat(newRate)).toFixed(2);
-                const newTotal = (
-                    parseFloat(newTotalMetal) +
-                    parseFloat(summary.makingCharges || 0) +
-                    parseFloat(summary.totalDiamondAmount || 0)
-                ).toFixed(2);
-                return {
-                    ...summary,
-                    ratePerGram: newRate.toFixed(2),
-                    totalMetal: newTotalMetal,
-                    total: newTotal
-                };
-            });
-            updatedMetalSummary.forEach(summary => {
-                const summaryRef = db.collection('metadata').doc(doc.id).collection('metalSummary').doc(summary.id);
-                batch.set(summaryRef, sanitizeData(summary));
-            });
+                updatesToWrite.push({
+                    ref: db.collection('metadata').doc(doc.id),
+                    data: sanitizeData(mainDocData) // Use the potentially modified mainDocData
+                });
+            }
 
-            batch.set(db.collection('metadata').doc(doc.id), sanitizeData(quotation));
-        }
+            // Perform all writes
+            updatesToWrite.forEach(update => {
+                console.log(`Writing to ${update.ref.path}:`, update.data);
+                transaction.set(update.ref, update.data);
+            });
+        });
 
-        await batch.commit();
         res.json({ message: 'Prices and metadata updated successfully' });
     } catch (err) {
         console.error('Error updating prices and metadata:', err);

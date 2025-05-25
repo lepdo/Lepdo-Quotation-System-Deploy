@@ -814,7 +814,7 @@ $(document).ready(function() {
         };
 
         if (includeIdAndDate) {
-            quotationData.quotationId = getNextQuotationIdForStorage();
+            // quotationData.quotationId = getNextQuotationIdForStorage();
             quotationData.quotationDate = new Date().toISOString();
         }
 
@@ -859,138 +859,63 @@ $(document).ready(function() {
         return quotationData;
     }
 
-    function getNextQuotationIdForStorage() {
-        let lastId = localStorage.getItem('lastQuotationId');
-        lastId = lastId ? parseInt(lastId, 10) : 0;
-        const nextId = lastId + 1;
-        localStorage.setItem('lastQuotationId', nextId);
-        return `Q-${String(nextId).padStart(5, '0')}`;
-    }
+    // function getNextQuotationIdForStorage() {
+    //     let lastId = localStorage.getItem('lastQuotationId');
+    //     lastId = lastId ? parseInt(lastId, 10) : 0;
+    //     const nextId = lastId + 1;
+    //     localStorage.setItem('lastQuotationId', nextId);
+    //     return `Q-${String(nextId).padStart(5, '0')}`;
+    // }
 
     $('#saveQuotationJsonBtn').on('click', function() {
-        // console.log('Save Quotation button clicked');
+        // Validate required fields
         const idSku = $('#itemIdSku').val().trim();
         const category = $('#itemCategory').val();
+        const totalDiamondAmount = $('#totalDiamondAmount').val();
         const metalRows = $('#metalTable tbody tr');
-        const diamondRows = $('#diamondTable tbody tr');
-
+        const metalSummaryRows = $('#metalSummaryTable tbody tr');
+    
         if (!idSku) {
-            showPopup('ID/SKU is required.', 'warning', 'Missing ID/SKU');
+            showPopup('Please enter an ID SKU.', 'warning', 'Validation Error');
             return;
         }
-
         if (!category) {
-            showPopup('Category is required.', 'warning', 'Missing Category');
+            showPopup('Please select a category.', 'warning', 'Validation Error');
             return;
         }
-
         if (metalRows.length === 0) {
-            showPopup('At least one metal item is required.', 'warning', 'Missing Metal Details');
+            showPopup('Please add at least one metal item.', 'warning', 'Validation Error');
             return;
         }
-
-        if (diamondRows.length === 0) {
-            showPopup('At least one diamond item is required.', 'warning', 'Missing Diamond Details');
+        if (metalSummaryRows.length === 0) {
+            showPopup('Please add at least one metal summary item.', 'warning', 'Validation Error');
             return;
         }
-
-        let metalValid = true;
-        const metalHeaders = getTableHeaders($('#metalTable'));
-        // console.log('Metal headers:', metalHeaders);
-        metalRows.each(function(index) {
-            const $row = $(this);
-            const fields = [
-                $row.find('td:nth-child(1)').text().trim(),
-                $row.find('td:nth-child(2)').text().trim(),
-                $row.find('td:nth-child(3)').text().trim(),
-                $row.find('td:nth-child(4)').text().trim(),
-                $row.find('td:nth-child(5)').text().trim(),
-                $row.find('td:nth-child(6)').text().trim()
-            ];
-            // console.log(`Metal row ${index + 1} fields:`, fields);
-            const invalidFields = fields.map((field, i) => {
-                if (!field || field.trim() === '') {
-                    // console.log(`Invalid metal field in row ${index + 1}: ${metalHeaders[i]} = "${field}"`);
-                    return metalHeaders[i];
-                }
-                if (i > 0) {
-                    const num = parseFloat(field);
-                    if (isNaN(num) || num <= 0) {
-                        // console.log(`Invalid metal number in row ${index + 1}: ${metalHeaders[i]} = "${field}"`);
-                        return metalHeaders[i];
-                    }
-                }
-                return null;
-            }).filter(f => f);
-            if (invalidFields.length > 0) {
-                metalValid = false;
-                showPopup(`Invalid values in metal row ${index + 1}: ${invalidFields.join(', ')}`, 'warning', 'Invalid Metal Details');
-                return false;
-            }
-        });
-
-        if (!metalValid) {
+        if (!totalDiamondAmount || isNaN(totalDiamondAmount) || parseFloat(totalDiamondAmount) < 0) {
+            showPopup('Please enter a valid total diamond amount.', 'warning', 'Validation Error');
             return;
         }
-
-        let diamondValid = true;
-        const diamondHeaders = getTableHeaders($('#diamondTable'));
-        // console.log('Diamond headers:', diamondHeaders);
-        diamondRows.each(function(index) {
-            const $row = $(this);
-            const fields = [
-                $row.find('td:nth-child(1)').text().trim(),
-                $row.find('td:nth-child(2)').text().trim(),
-                $row.find('td:nth-child(3)').text().trim(),
-                $row.find('td:nth-child(4)').text().trim(),
-                $row.find('td:nth-child(5)').text().trim(),
-                $row.find('td:nth-child(6)').text().trim(),
-                $row.find('td:nth-child(7)').text().trim()
-            ];
-            // console.log(`Diamond row ${index + 1} fields:`, fields);
-            const invalidFields = fields.map((field, i) => {
-                if (!field || field.trim() === '') {
-                    // console.log(`Invalid diamond field in row ${index + 1}: ${diamondHeaders[i]} = "${field}"`);
-                    return diamondHeaders[i];
-                }
-                if (i > 1) {
-                    const num = parseFloat(field);
-                    if (isNaN(num) || num <= 0) {
-                        // console.log(`Invalid diamond number in row ${index + 1}: ${diamondHeaders[i]} = "${field}"`);
-                        return diamondHeaders[i];
-                    }
-                }
-                return null;
-            }).filter(f => f);
-            if (invalidFields.length > 0) {
-                diamondValid = false;
-                showPopup(`Invalid values in diamond row ${index + 1}: ${invalidFields.join(', ')}`, 'warning', 'Invalid Diamond Details');
-                return false;
-            }
-        });
-
-        if (!diamondValid) {
-            return;
-        }
-
+    
+        // Get quotation data (without quotationId)
         const quotationData = getQuotationData();
-        // console.log('Quotation data to save:', JSON.stringify(quotationData, null, 2));
-
+        
+        // Show loading state
         showLoading();
         $('#saveQuotationJsonBtn').prop('disabled', true).addClass('disabled');
         $('#saveLoader').show();
-
+    
+        // Send data to server
         $.ajax({
             url: '/api/save-quotation',
             method: 'POST',
             contentType: 'application/json',
             data: JSON.stringify(quotationData),
             success: function(response) {
-                // console.log('Quotation saved successfully:', response);
+                console.log('Quotation saved successfully:', response);
                 hideLoading();
                 $('#saveLoader').hide();
                 $('#saveQuotationJsonBtn').prop('disabled', false).removeClass('disabled');
-                showPopup('Quotation saved successfully!', 'success', 'Save Successful');
+                showPopup(`Quotation ${response.quotationId} saved successfully!`, 'success', 'Save Successful');
                 resetQuotationForm();
             },
             error: function(jqXHR, textStatus, errorThrown) {

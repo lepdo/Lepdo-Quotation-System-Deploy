@@ -652,14 +652,15 @@ app.delete('/api/metadata/:id', async (req, res) => {
 });
 
 // Save a quotation
+// server.js
 app.post('/api/save-quotation', async (req, res) => {
     const newQuotation = req.body;
 
     // Validate required fields
-    if (!newQuotation.quotationId || !newQuotation.metalItems || !newQuotation.summary) {
-        console.error('Validation failed: Missing quotationId, metalItems, or summary');
+    if (!newQuotation.identification?.idSku || !newQuotation.metalItems || !newQuotation.summary) {
+        console.error('Validation failed: Missing idSku, metalItems, or summary');
         return res.status(400).json({ 
-            error: { message: 'Invalid quotation: quotationId, metalItems, and summary are required' }
+            error: { message: 'Invalid quotation: idSku, metalItems, and summary are required' }
         });
     }
 
@@ -672,9 +673,19 @@ app.post('/api/save-quotation', async (req, res) => {
     }
 
     try {
-        const docId = newQuotation.quotationId.toString();
+        // Generate unique quotationId
+        const metadataSnapshot = await db.collection('metadata').get();
+        const existingIds = metadataSnapshot.docs.map(doc => doc.id);
+        let nextId = 1;
+        while (existingIds.includes(`Q-${String(nextId).padStart(5, '0')}`)) {
+            nextId++;
+        }
+        const docId = `Q-${String(nextId).padStart(5, '0')}`;
+        newQuotation.quotationId = docId; // Assign generated ID
+
         const docRef = db.collection('metadata').doc(docId);
 
+        // Ensure the document doesn't exist
         const doc = await docRef.get();
         if (doc.exists) {
             console.error(`Quotation ${docId} already exists`);
@@ -692,18 +703,18 @@ app.post('/api/save-quotation', async (req, res) => {
 
         // Prepare main document for Firestore
         const mainDoc = sanitizeData({
-            quotationId: newQuotation.quotationId,
+            quotationId: docId,
             identification: {
                 idSku: newQuotation.identification.idSku,
                 category: newQuotation.identification.category,
                 images: newQuotation.identification.images
             },
-            quotationDate: newQuotation.quotationDate ? new Date(newQuotation.quotationDate) : null,
+            quotationDate: newQuotation.quotationDate ? new Date(newQuotation.quotationDate) : new Date(),
             summary: {
                 idSku: newQuotation.summary.idSku,
                 category: newQuotation.summary.category,
                 totalDiamondAmount: newQuotation.summary.totalDiamondAmount,
-                metalSummary: newQuotation.summary.metalSummary // Include metalSummary
+                metalSummary: newQuotation.summary.metalSummary
             }
         });
 
@@ -711,7 +722,6 @@ app.post('/api/save-quotation', async (req, res) => {
         if (mainDocSize > 1_000_000) {
             console.warn(`Quotation ${docId} exceeds 1 MB. Storing in Cloud Storage.`);
             const storagePath = `quotations/${docId}.json`;
-            // Ensure metalSummary is included in Cloud Storage
             const cloudData = {
                 ...newQuotation,
                 summary: {
@@ -727,55 +737,38 @@ app.post('/api/save-quotation', async (req, res) => {
                 storagePath,
                 storedInCloudStorage: true
             });
-            return res.status(200).json({ message: `Quotation ${docId} saved in Cloud Storage` });
+            return res.status(200).json({ message: `Quotation ${docId} saved in Cloud Storage`, quotationId: docId });
         }
 
         // Save main document to Firestore
         await docRef.set(mainDoc);
 
-        // Save metalItems subcollection
+        // Save subcollections (metalItems, diamondItems, metalSummary)
+        const batch = db.batch();
         if (Array.isArray(newQuotation.metalItems) && newQuotation.metalItems.length > 0) {
-            const batch = db.batch();
             newQuotation.metalItems.forEach((item, index) => {
-                if (!item.purity || !item.grams || !item.ratePerGram) {
-                    console.warn(`Invalid metalItem at index ${index}:`, item);
-                    return;
-                }
+                if (!item.purity || !item.grams || !item.ratePerGram) return;
                 const itemRef = docRef.collection('metalItems').doc(`item_${index}`);
                 batch.set(itemRef, sanitizeData(item));
             });
-            await batch.commit();
         }
-
-        // Save diamondItems subcollection
         if (Array.isArray(newQuotation.diamondItems) && newQuotation.diamondItems.length > 0) {
-            const batch = db.batch();
             newQuotation.diamondItems.forEach((item, index) => {
-                if (!item.shape || !item.mm || !item.pricePerCt || !item.totalWeightCt) {
-                    console.warn(`Invalid diamondItem at index ${index}:`, item);
-                    return;
-                }
+                if (!item.shape || !item.mm || !item.pricePerCt || !item.totalWeightCt) return;
                 const itemRef = docRef.collection('diamondItems').doc(`item_${index}`);
                 batch.set(itemRef, sanitizeData(item));
             });
-            await batch.commit();
         }
-
-        // Save metalSummary subcollection
         if (Array.isArray(newQuotation.summary.metalSummary) && newQuotation.summary.metalSummary.length > 0) {
-            const batch = db.batch();
             newQuotation.summary.metalSummary.forEach((item, index) => {
-                if (!item.purity || !item.grams || !item.ratePerGram) {
-                    console.warn(`Invalid metalSummary item at index ${index}:`, item);
-                    return;
-                }
+                if (!item.purity || !item.grams || !item.ratePerGram) return;
                 const itemRef = docRef.collection('metalSummary').doc(`item_${index}`);
                 batch.set(itemRef, sanitizeData(item));
             });
-            await batch.commit();
         }
+        await batch.commit();
 
-        return res.status(200).json({ message: `Quotation ${docId} saved successfully` });
+        return res.status(200).json({ message: `Quotation ${docId} saved successfully`, quotationId: docId });
     } catch (err) {
         console.error('Error saving quotation:', err);
         return res.status(500).json({ error: { message: 'Failed to save quotation', details: err.message } });

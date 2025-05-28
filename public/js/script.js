@@ -353,7 +353,8 @@ $(document).ready(function() {
         updateMetalSummaryTable();
         updateTotalMetalAmountsAndSummary();
         entry.remove();
-        showPopup('Metal item added successfully!', 'success', 'Metal Added');
+        showToast('Metal item added successfully!', 'success');
+
         createMetalEntryForm('#metalEntriesContainer', metalPurityOptions);
     });
 
@@ -573,7 +574,7 @@ $(document).ready(function() {
             resetDiamondForm();
             hideLoading();
             $('#addDiamondBtn').prop('disabled', false).removeClass('disabled');
-            showPopup('Diamond added successfully!', 'success', 'Diamond Added');
+            showToast('Diamond item added successfully!', 'success');
         }, 300);
     });
 
@@ -795,7 +796,35 @@ $(document).ready(function() {
             }
         });
     });
-
+    function showToast(message, type = 'info', duration = 5000) {
+        const toastContainer = document.getElementById('toastContainer');
+        const toast = document.createElement('div');
+        toast.className = `toast ${type}`;
+        
+        const messageSpan = document.createElement('span');
+        messageSpan.textContent = message;
+        
+        const closeButton = document.createElement('button');
+        closeButton.className = 'toast-close';
+        closeButton.innerHTML = '&times;';
+        closeButton.onclick = () => hideToast(toast);
+        
+        toast.appendChild(messageSpan);
+        toast.appendChild(closeButton);
+        toastContainer.appendChild(toast);
+        
+        // Auto-hide after duration
+        if (duration > 0) {
+          setTimeout(() => hideToast(toast), duration);
+        }
+        
+        return toast;
+      }
+      
+      function hideToast(toast) {
+        toast.classList.add('hide');
+        setTimeout(() => toast.remove(), 300);
+      }
     function getQuotationData(includeIdAndDate = true) {
         const quotationData = {
             identification: {
@@ -1088,4 +1117,6 @@ $(document).ready(function() {
 
     updateTotalMetalAmountsAndSummary();
     updateTotalDiamondAmount();
+
+    
 });

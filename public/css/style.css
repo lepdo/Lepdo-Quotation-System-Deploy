@@ -1001,3 +1001,74 @@ tbody tr:hover {
         font-size: var(--font-size-base);
     }
 }
+/* Toast Notification Styles */
+.toast-container {
+    position: fixed;
+    top: 20px;
+    right: 20px;
+    z-index: 9999;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+  }
+  
+  .toast {
+    padding: 15px 20px;
+    border-radius: var(--border-radius-md);
+    color: white;
+    font-family: var(--font-primary);
+    font-weight: 600;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    min-width: 250px;
+    max-width: 350px;
+    box-shadow: var(--shadow-medium);
+    animation: slideIn 0.3s ease-out;
+    transition: all 0.3s ease;
+    opacity: 1;
+    transform: translateX(0);
+  }
+  
+  .toast.hide {
+    opacity: 0;
+    transform: translateX(100%);
+  }
+  
+  .toast.success {
+    background-color: var(--success-color);
+  }
+  
+  .toast.error {
+    background-color: var(--danger-color);
+  }
+  
+  .toast.warning {
+    background-color: var(--warning-color);
+    color: var(--text-color);
+  }
+  
+  .toast.info {
+    background-color: var(--info-color);
+  }
+  
+  .toast-close {
+    background: none;
+    border: none;
+    color: inherit;
+    font-size: 1.2rem;
+    cursor: pointer;
+    margin-left: 15px;
+    padding: 0;
+  }
+  
+  @keyframes slideIn {
+    from {
+      opacity: 0;
+      transform: translateX(100%);
+    }
+    to {
+      opacity: 1;
+      transform: translateX(0);
+    }
+  }

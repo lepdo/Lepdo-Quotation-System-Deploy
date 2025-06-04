@@ -551,36 +551,86 @@ app.delete('/api/diamonds/:id', async (req, res) => {
 app.get('/api/metadata', async (req, res) => {
     res.set('Cache-Control', 'no-cache');
     try {
-        const snapshot = await db.collection('metadata').get();
-        const metadata = [];
+        const {
+            limit = 10,
+            startAfter,
+            search,
+            category,
+            sku,
+            dateFrom,
+            dateTo
+        } = req.query;
+
+        let query = db.collection('metadata');
+
+        if (category) {
+            query = query.where('identification.category', '==', category);
+        }
+        if (sku) {
+            query = query.where('identification.idSku', '==', sku);
+        }
+        if (dateFrom) {
+            query = query.where('quotationDate', '>=', new Date(dateFrom));
+        }
+        if (dateTo) {
+            const toDateObj = new Date(dateTo);
+            toDateObj.setHours(23, 59, 59, 999);
+            query = query.where('quotationDate', '<=', toDateObj);
+        }
+
+        const totalCountSnapshot = await query.get();
+        const totalCount = totalCountSnapshot.size;
+
+        query = query.orderBy('quotationDate', 'desc');
+
+        if (startAfter) {
+            const lastVisibleDoc = await db.collection('metadata').doc(startAfter).get();
+            if (lastVisibleDoc.exists) {
+                query = query.startAfter(lastVisibleDoc);
+            }
+        }
+        query = query.limit(parseInt(limit));
+
+        const snapshot = await query.get();
+        const metadataSummaries = [];
+
+        // Fetch full data for each quotation
         for (const doc of snapshot.docs) {
             const data = doc.data();
-            if (data.storedInCloudStorage) {
+            let fullQuotation = { ...data, quotationId: data.quotationId || doc.id };
+
+            if (data.storedInCloudStorage && data.storagePath) {
                 try {
                     const file = bucket.file(data.storagePath);
                     const [contents] = await file.download();
-                    metadata.push(JSON.parse(contents.toString()));
+                    fullQuotation = { ...JSON.parse(contents.toString()), quotationId: doc.id };
                 } catch (storageErr) {
                     console.error(`Error downloading quotation ${doc.id} from Cloud Storage:`, storageErr);
-                    continue;
+                    continue; // Skip if Cloud Storage fetch fails
                 }
             } else {
-                // Fetch subcollections with consistent reads
                 const [diamondItemsSnapshot, metalItemsSnapshot, metalSummarySnapshot] = await Promise.all([
                     db.collection('metadata').doc(doc.id).collection('diamondItems').get(),
                     db.collection('metadata').doc(doc.id).collection('metalItems').get(),
                     db.collection('metadata').doc(doc.id).collection('metalSummary').get()
                 ]);
-                data.diamondItems = diamondItemsSnapshot.docs.map(d => ({ id: d.id, ...d.data() }));
-                data.metalItems = metalItemsSnapshot.docs.map(d => ({ id: d.id, ...d.data() }));
-                data.summary.metalSummary = metalSummarySnapshot.docs.map(d => ({ id: d.id, ...d.data() }));
-                metadata.push(data);
+                fullQuotation.diamondItems = diamondItemsSnapshot.docs.map(d => ({ id: d.id, ...d.data() }));
+                fullQuotation.metalItems = metalItemsSnapshot.docs.map(d => ({ id: d.id, ...d.data() }));
+                if (!fullQuotation.summary) fullQuotation.summary = {};
+                fullQuotation.summary.metalSummary = metalSummarySnapshot.docs.map(d => ({ id: d.id, ...d.data() }));
             }
+
+            metadataSummaries.push(fullQuotation);
         }
-        res.json(metadata);
+
+        res.json({
+            quotations: metadataSummaries,
+            totalCount: totalCount,
+            hasNextPage: metadataSummaries.length === parseInt(limit) && metadataSummaries.length > 0
+        });
     } catch (err) {
-        console.error('Error fetching metadata:', err);
-        res.status(500).json({ error: { message: 'Failed to load metadata', details: err.message } });
+        console.error('Error fetching metadata summaries:', err);
+        res.status(500).json({ error: { message: 'Failed to load metadata summaries', details: err.message } });
     }
 });
 

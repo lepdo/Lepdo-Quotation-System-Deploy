@@ -12,6 +12,14 @@ require('dotenv').config();
 const app = express();
 const PORT = process.env.PORT || 3000;
 
+
+app.use(cors({
+    origin: '*', // Allow all origins
+    methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS', 'PATCH', 'HEAD'], // Allow all common HTTP methods
+    allowedHeaders: ['*'], // Allow all headers
+    credentials: false // No credentials required
+}));
+
 // Construct service account credentials from environment variables
 const serviceAccount = JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT);
 
@@ -42,7 +50,6 @@ const upload = multer({
 });
 
 // Middleware
-app.use(cors());
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 app.use(express.static(path.join(__dirname, 'public')));
@@ -74,6 +81,20 @@ function sanitizeData(obj) {
         }
     }
     return result;
+}
+
+// Helper function to get the next sequential ID
+async function getNextId(counterName) {
+    const counterRef = db.collection('counters').doc(counterName);
+    return db.runTransaction(async (transaction) => {
+        const counterDoc = await transaction.get(counterRef);
+        let nextId = 1;
+        if (counterDoc.exists) {
+            nextId = counterDoc.data().currentId + 1;
+        }
+        transaction.set(counterRef, { currentId: nextId }, { merge: true });
+        return nextId;
+    });
 }
 
 // Updated endpoint to handle image uploads to GitHub with compression
@@ -191,10 +212,6 @@ app.get('/api/diamonds', async (req, res) => {
 });
 
 // Add a new diamond
-// Remove the VALID_SHAPES array
-// const VALID_SHAPES = ['ROUND', 'OVAL', 'PEAR', 'EMERALD', 'PRINCESS', 'CUSHION'];
-
-// In the POST /api/diamonds endpoint
 app.post('/api/diamonds', async (req, res) => {
     try {
         const newDiamond = req.body;
@@ -213,9 +230,7 @@ app.post('/api/diamonds', async (req, res) => {
             });
         }
 
-        const snapshot = await db.collection('diamonds').get();
-        const maxId = snapshot.empty ? 0 : Math.max(...snapshot.docs.map(doc => parseInt(doc.id)));
-        newDiamond.id = maxId + 1;
+        newDiamond.id = await getNextId('diamonds');
         newDiamond['MM & SHAPE'] = `${newDiamond.SHAPE}-${newDiamond.MM} MM`;
 
         await db.collection('diamonds').doc(newDiamond.id.toString()).set(sanitizeData(newDiamond));
@@ -226,16 +241,6 @@ app.post('/api/diamonds', async (req, res) => {
     }
 });
 
-// In the PUT /api/diamonds/:id endpoint
-// Helper function to normalize MM values for comparison
-
-
-// Updated PUT /api/diamonds/:id endpoint
-// Helper function to normalize MM values for comparison
-// Helper function to normalize MM values for comparison
-// Helper function to normalize MM values for comparison
-// Helper function to normalize MM values for comparison
-// Helper function to normalize MM values for comparison
 // Helper function to normalize MM values for comparison
 function normalizeMM(mm) {
     if (typeof mm === 'string') {
@@ -245,24 +250,7 @@ function normalizeMM(mm) {
     return parseFloat(mm).toFixed(2);
 }
 
-// Helper function to sanitize data
-function sanitizeData(obj) {
-    if (obj === null || obj === undefined) return null;
-    if (Array.isArray(obj)) return obj.map(item => sanitizeData(item));
-    if (typeof obj !== 'object' || obj instanceof Date) return obj;
-    
-    const result = {};
-    for (const [key, value] of Object.entries(obj)) {
-        if (value === undefined || value === null) {
-            result[key] = null;
-        } else if (typeof value === 'object' && !(value instanceof Date)) {
-            result[key] = sanitizeData(value);
-        } else if (typeof value !== 'function' && !Number.isNaN(value)) {
-            result[key] = value;
-        }
-    }
-    return result;
-}
+// Updated PUT /api/diamonds/:id endpoint
 async function updateDiamondAndRefresh(id, diamondData) {
     await fetch(`/api/diamonds/${id}`, {
         method: 'PUT',
@@ -279,6 +267,7 @@ async function updateDiamondAndRefresh(id, diamondData) {
     const metadata = await response.json();
     // Update UI with metadata
 }
+
 app.put('/api/diamonds/:id', async (req, res) => {
     try {
         const id = req.params.id;
@@ -308,7 +297,6 @@ app.put('/api/diamonds/:id', async (req, res) => {
             if (!diamondDoc.exists) {
                 throw new Error('Diamond not found');
             }
-
             const metadataSnapshot = await transaction.get(db.collection('metadata'));
             const metadataDocs = metadataSnapshot.docs.filter(doc => !doc.data().storedInCloudStorage);
 
@@ -370,35 +358,31 @@ app.put('/api/diamonds/:id', async (req, res) => {
                         writeCount++;
                     });
 
-                    // Original lines for updating only summary.totalDiamondAmount (previously 381-385) are removed.
-                    // We first calculate updatedMetalSummaries, then update the main document's summary comprehensively.
-
                     const updatedMetalSummaries = metalSummaries.map(summary => {
                         const newTotal = (
                             parseFloat(summary.totalMetal || 0) +
                             parseFloat(summary.makingCharges || 0) +
-                            parseFloat(totalDiamondAmount) // totalDiamondAmount for the entire quotation
+                            parseFloat(totalDiamondAmount)
                         ).toFixed(2);
                         console.log(`Preparing metalSummary ${summary.id} in metadata ${doc.id}: totalDiamondAmount=${totalDiamondAmount}, total=${newTotal}`);
                         return {
-                            ...summary, // Spread existing fields from the subcollection item
-                            totalDiamondAmount: totalDiamondAmount, // This is the overall totalDiamondAmount
+                            ...summary,
+                            totalDiamondAmount: totalDiamondAmount,
                             total: newTotal,
                             updatedAt: new Date().toISOString()
                         };
                     });
 
-                    // Update main metadata document's summary (totalDiamondAmount and metalSummary array)
                     const mainDocUpdates = {
                         'summary.totalDiamondAmount': totalDiamondAmount,
                         'summary.metalSummary': updatedMetalSummaries.map(s => {
-                            const { id, ...summaryData } = s; // Remove 'id' property from subcollection item for the array
+                            const { id, ...summaryData } = s;
                             return sanitizeData(summaryData);
                         })
                     };
                     transaction.update(db.collection('metadata').doc(doc.id), mainDocUpdates);
                     batchUpdates.push(`summary in metadata ${doc.id} (totalDiamondAmount and metalSummary array) updated`);
-                    writeCount++; // Counts as one update operation for the main document
+                    writeCount++;
 
                     updatedMetalSummaries.forEach(summary => {
                         if (!summary.totalDiamondAmount || !summary.total) {
@@ -499,7 +483,6 @@ app.put('/api/diamonds/:id', async (req, res) => {
             await batch.commit();
         }
 
-        // Verify updates with additional logging
         for (const update of result.batchUpdates) {
             if (update.includes('metalSummary')) {
                 const [_, itemId, , , metadataId] = update.split(' ');
@@ -529,6 +512,7 @@ app.put('/api/diamonds/:id', async (req, res) => {
         return res.status(500).json({ error: { message: 'Failed to update diamond', details: err.message, stack: err.stack } });
     }
 });
+
 // Delete a diamond
 app.delete('/api/diamonds/:id', async (req, res) => {
     try {
@@ -547,7 +531,7 @@ app.delete('/api/diamonds/:id', async (req, res) => {
     }
 });
 
-// Get all quotations
+// Get all quotations (summary view) with pagination and filtering
 app.get('/api/metadata', async (req, res) => {
     res.set('Cache-Control', 'no-cache');
     try {
@@ -634,6 +618,54 @@ app.get('/api/metadata', async (req, res) => {
     }
 });
 
+// Get a single quotation (detailed view)
+app.get('/api/metadata/:id', async (req, res) => {
+    res.set('Cache-Control', 'no-cache');
+    try {
+        const id = req.params.id;
+        const docRef = db.collection('metadata').doc(id);
+        const doc = await docRef.get();
+
+        if (!doc.exists) {
+            return res.status(404).json({ error: { message: 'Quotation not found' } });
+        }
+
+        const data = doc.data();
+
+        if (data.storedInCloudStorage) {
+            if (!data.storagePath) {
+                console.error(`Quotation ${id} is marked as stored in cloud but has no storagePath.`);
+                return res.status(500).json({ error: { message: 'Quotation data configuration error.' } });
+            }
+            try {
+                const file = bucket.file(data.storagePath);
+                const [contents] = await file.download();
+                const fullQuotation = JSON.parse(contents.toString());
+                if (!fullQuotation.quotationId) fullQuotation.quotationId = id;
+                return res.json(fullQuotation);
+            } catch (storageErr) {
+                console.error(`Error downloading quotation ${id} from Cloud Storage:`, storageErr);
+                return res.status(500).json({ error: { message: 'Failed to load full quotation data from storage', details: storageErr.message } });
+            }
+        } else {
+            const [diamondItemsSnapshot, metalItemsSnapshot, metalSummarySnapshot] = await Promise.all([
+                db.collection('metadata').doc(id).collection('diamondItems').get(),
+                db.collection('metadata').doc(id).collection('metalItems').get(),
+                db.collection('metadata').doc(id).collection('metalSummary').get()
+            ]);
+            data.diamondItems = diamondItemsSnapshot.docs.map(d => ({ id: d.id, ...d.data() }));
+            data.metalItems = metalItemsSnapshot.docs.map(d => ({ id: d.id, ...d.data() }));
+            if (!data.summary) data.summary = {};
+            data.summary.metalSummary = metalSummarySnapshot.docs.map(d => ({ id: d.id, ...d.data() }));
+            if (!data.quotationId) data.quotationId = id;
+            return res.json(data);
+        }
+    } catch (err) {
+        console.error(`Error fetching metadata for ID ${req.params.id}:`, err);
+        res.status(500).json({ error: { message: 'Failed to load quotation details', details: err.message } });
+    }
+});
+
 // Delete a quotation
 app.delete('/api/metadata/:id', async (req, res) => {
     try {
@@ -646,7 +678,6 @@ app.delete('/api/metadata/:id', async (req, res) => {
 
         const quotationData = doc.data();
 
-        // Delete images from GitHub if they exist
         if (quotationData.identification && Array.isArray(quotationData.identification.images)) {
             const deleteImagePromises = quotationData.identification.images.map(async (url) => {
                 if (!url.startsWith(`https://raw.githubusercontent.com/${process.env.GITHUB_OWNER}/${process.env.GITHUB_REPO}/`)) {
@@ -655,17 +686,14 @@ app.delete('/api/metadata/:id', async (req, res) => {
                 }
 
                 try {
-                    // Extract file path from URL
                     const filePath = url.split(`https://raw.githubusercontent.com/${process.env.GITHUB_OWNER}/${process.env.GITHUB_REPO}/main/`)[1];
 
-                    // Get the file's SHA
                     const { data } = await octokit.repos.getContent({
                         owner: process.env.GITHUB_OWNER,
                         repo: process.env.GITHUB_REPO,
                         path: filePath
                     });
 
-                    // Delete the file from GitHub
                     await octokit.repos.deleteFile({
                         owner: process.env.GITHUB_OWNER,
                         repo: process.env.GITHUB_REPO,
@@ -679,11 +707,9 @@ app.delete('/api/metadata/:id', async (req, res) => {
                 }
             });
 
-            // Wait for all image deletions to complete
             await Promise.all(deleteImagePromises);
         }
 
-        // Delete subcollections
         const subcollections = ['diamondItems', 'metalItems', 'metalSummary'];
         for (const subcollection of subcollections) {
             const snapshot = await db.collection('metadata').doc(id).collection(subcollection).get();
@@ -692,7 +718,6 @@ app.delete('/api/metadata/:id', async (req, res) => {
             await batch.commit();
         }
 
-        // Delete the main quotation document
         await docRef.delete();
         res.json({ message: 'Quotation and associated images deleted successfully' });
     } catch (err) {
@@ -702,11 +727,9 @@ app.delete('/api/metadata/:id', async (req, res) => {
 });
 
 // Save a quotation
-// server.js
 app.post('/api/save-quotation', async (req, res) => {
     const newQuotation = req.body;
 
-    // Validate required fields
     if (!newQuotation.identification?.idSku || !newQuotation.metalItems || !newQuotation.summary) {
         console.error('Validation failed: Missing idSku, metalItems, or summary');
         return res.status(400).json({ 
@@ -714,7 +737,6 @@ app.post('/api/save-quotation', async (req, res) => {
         });
     }
 
-    // Validate metalSummary
     if (!Array.isArray(newQuotation.summary.metalSummary) || newQuotation.summary.metalSummary.length === 0) {
         console.error('Validation failed: metalSummary is empty or not an array');
         return res.status(400).json({ 
@@ -723,26 +745,18 @@ app.post('/api/save-quotation', async (req, res) => {
     }
 
     try {
-        // Generate unique quotationId
-        const metadataSnapshot = await db.collection('metadata').get();
-        const existingIds = metadataSnapshot.docs.map(doc => doc.id);
-        let nextId = 1;
-        while (existingIds.includes(`Q-${String(nextId).padStart(5, '0')}`)) {
-            nextId++;
-        }
+        const nextId = await getNextId('quotations');
         const docId = `Q-${String(nextId).padStart(5, '0')}`;
-        newQuotation.quotationId = docId; // Assign generated ID
+        newQuotation.quotationId = docId;
 
         const docRef = db.collection('metadata').doc(docId);
 
-        // Ensure the document doesn't exist
         const doc = await docRef.get();
         if (doc.exists) {
             console.error(`Quotation ${docId} already exists`);
             return res.status(400).json({ error: { message: `Quotation ${docId} already exists` } });
         }
 
-        // Normalize diamondItems shapes
         if (Array.isArray(newQuotation.diamondItems)) {
             newQuotation.diamondItems.forEach(item => {
                 if (item.shape) {
@@ -751,7 +765,6 @@ app.post('/api/save-quotation', async (req, res) => {
             });
         }
 
-        // Prepare main document for Firestore
         const mainDoc = sanitizeData({
             quotationId: docId,
             identification: {
@@ -790,10 +803,8 @@ app.post('/api/save-quotation', async (req, res) => {
             return res.status(200).json({ message: `Quotation ${docId} saved in Cloud Storage`, quotationId: docId });
         }
 
-        // Save main document to Firestore
         await docRef.set(mainDoc);
 
-        // Save subcollections (metalItems, diamondItems, metalSummary)
         const batch = db.batch();
         if (Array.isArray(newQuotation.metalItems) && newQuotation.metalItems.length > 0) {
             newQuotation.metalItems.forEach((item, index) => {
@@ -840,7 +851,6 @@ app.get('/api/prices', async (req, res) => {
 });
 
 // Update metal prices
-// Update metal prices
 app.post('/api/prices', async (req, res) => {
     try {
         const newPrices = req.body;
@@ -851,38 +861,33 @@ app.post('/api/prices', async (req, res) => {
             });
         }
 
-        // Save new prices
         await db.collection('metalPrices').doc('prices').set(sanitizeData(newPrices));
 
-        // Use a transaction to update metadata atomically
         await db.runTransaction(async (transaction) => {
             const metadataSnapshot = await transaction.get(db.collection('metadata'));
-            const metadataDocsToUpdate = metadataSnapshot.docs.filter(doc => !doc.data().storedInCloudStorage);
-
-            const allReads = [];
-            for (const doc of metadataDocsToUpdate) {
-                allReads.push(
-                    transaction.get(db.collection('metadata').doc(doc.id).collection('metalItems')),
-                    transaction.get(db.collection('metadata').doc(doc.id).collection('metalSummary'))
-                );
-            }
-
-            const allSnapshots = await Promise.all(allReads);
-            let snapshotIndex = 0;
+            const firestoreMetadataDocs = metadataSnapshot.docs.filter(doc => !doc.data().storedInCloudStorage);
 
             const updatesToWrite = [];
 
-            for (const doc of metadataDocsToUpdate) {
-                const quotation = doc.data(); // Original quotation data from the first read
-                console.log(`Processing metadata ${doc.id} for price update (read phase complete)`);
+            for (const doc of firestoreMetadataDocs) {
+                const quotation = doc.data();
+                console.log(`Processing Firestore metadata ${doc.id} for price update`);
 
-                const metalItemsSnapshot = allSnapshots[snapshotIndex++];
-                const metalSummarySnapshot = allSnapshots[snapshotIndex++];
+                const metalItemsSnapshot = await transaction.get(db.collection('metadata').doc(doc.id).collection('metalItems'));
+                const metalSummarySnapshot = await transaction.get(db.collection('metadata').doc(doc.id).collection('metalSummary'));
 
                 const metalItems = metalItemsSnapshot.docs.map(d => ({ id: d.id, ...d.data() }));
+                
+                const usesAffectedMetal = metalItems.some(metal => newPrices.hasOwnProperty(metal.purity)) ||
+                                         (quotation.summary && quotation.summary.metalSummary && quotation.summary.metalSummary.some(summary => newPrices.hasOwnProperty(summary.purity)));
+
+                if (!usesAffectedMetal) {
+                    console.log(`Skipping metadata ${doc.id}, no relevant metal purities found for update.`);
+                    continue;
+                }
                 const updatedMetalItems = metalItems.map(metal => {
                     const newRate = newPrices[metal.purity];
-                    if (newRate === undefined) { // Check for undefined explicitly
+                    if (newRate === undefined) {
                         console.error(`Price for purity ${metal.purity} not found in newPrices for metalItem ${metal.id} in ${doc.id}. Available prices:`, newPrices);
                         throw new Error(`Price for ${metal.purity} not found in metalPrice`);
                     }
@@ -909,7 +914,7 @@ app.post('/api/prices', async (req, res) => {
                 const metalSummaries = metalSummarySnapshot.docs.map(d => ({ id: d.id, ...d.data() }));
                 const updatedMetalSummaries = metalSummaries.map(summary => {
                     const newRate = newPrices[summary.purity];
-                    if (newRate === undefined) { // Check for undefined explicitly
+                    if (newRate === undefined) {
                         console.error(`Price for purity ${summary.purity} not found in newPrices for metalSummary ${summary.id} in ${doc.id}. Available prices:`, newPrices);
                         throw new Error(`Price for ${summary.purity} not found in metalPrice`);
                     }
@@ -934,31 +939,95 @@ app.post('/api/prices', async (req, res) => {
                         data: sanitizeData(summary)
                     });
                 });
-                
-                // Prepare the main metadata document update.
-                // It needs to reflect the changes in its metalSummary array if it's stored directly.
-                const mainDocData = { ...quotation }; // Start with existing data
+
+                const mainDocData = { ...quotation };
                 if (mainDocData.summary && Array.isArray(mainDocData.summary.metalSummary)) {
                     mainDocData.summary.metalSummary = updatedMetalSummaries.map(s => {
-                        const { id, ...summaryData } = s; // Remove 'id' if it's from subcollection
+                        const { id, ...summaryData } = s;
                         return sanitizeData(summaryData);
                     });
                 }
-                // If other fields in the main doc depend on these prices, update them here.
-                // For now, we are just updating the metalSummary array within the summary.
 
                 updatesToWrite.push({
                     ref: db.collection('metadata').doc(doc.id),
-                    data: sanitizeData(mainDocData) // Use the potentially modified mainDocData
+                    data: sanitizeData(mainDocData)
                 });
             }
 
-            // Perform all writes
             updatesToWrite.forEach(update => {
                 console.log(`Writing to ${update.ref.path}:`, update.data);
                 transaction.set(update.ref, update.data);
             });
         });
+
+        const cloudMetadataSnapshot = await db.collection('metadata')
+            .where('storedInCloudStorage', '==', true)
+            .get();
+
+        for (const doc of cloudMetadataSnapshot.docs) {
+            const quotationData = doc.data();
+            if (!quotationData.storagePath) {
+                console.warn(`No storagePath for cloud metadata ${doc.id}, skipping price update`);
+                continue;
+            }
+
+            try {
+                console.log(`Processing Cloud Storage metadata ${doc.id} for price update`);
+                const file = bucket.file(quotationData.storagePath);
+                const [contents] = await file.download();
+                let metadata = JSON.parse(contents.toString());
+
+                let csMetadataUpdated = false;
+
+                const csUsesAffectedMetal = (metadata.metalItems && metadata.metalItems.some(metal => newPrices.hasOwnProperty(metal.purity))) ||
+                                           (metadata.summary && metadata.summary.metalSummary && metadata.summary.metalSummary.some(summary => newPrices.hasOwnProperty(summary.purity)));
+
+                if (!csUsesAffectedMetal) {
+                    console.log(`Skipping cloud metadata ${doc.id}, no relevant metal purities found for update.`);
+                    continue;
+                }
+
+                if (metadata.metalItems && Array.isArray(metadata.metalItems)) {
+                    metadata.metalItems = metadata.metalItems.map(metal => {
+                        const newRate = newPrices[metal.purity];
+                        if (newRate !== undefined) {
+                            csMetadataUpdated = true;
+                            const newTotalMetal = (parseFloat(metal.grams) * parseFloat(newRate)).toFixed(2);
+                            const newTotal = (parseFloat(newTotalMetal) + parseFloat(metal.makingCharges || 0)).toFixed(2);
+                            return { ...metal, ratePerGram: parseFloat(newRate).toFixed(2), totalMetal: newTotalMetal, total: newTotal };
+                        }
+                        return metal;
+                    });
+                }
+
+                if (metadata.summary && metadata.summary.metalSummary && Array.isArray(metadata.summary.metalSummary)) {
+                    metadata.summary.metalSummary = metadata.summary.metalSummary.map(summary => {
+                        const newRate = newPrices[summary.purity];
+                        if (newRate !== undefined) {
+                            csMetadataUpdated = true;
+                            const newTotalMetal = (parseFloat(summary.grams) * parseFloat(newRate)).toFixed(2);
+                            const newTotal = (
+                                parseFloat(newTotalMetal) +
+                                parseFloat(summary.makingCharges || 0) +
+                                parseFloat(summary.totalDiamondAmount || 0)
+                            ).toFixed(2);
+                            return { ...summary, ratePerGram: parseFloat(newRate).toFixed(2), totalMetal: newTotalMetal, total: newTotal, updatedAt: new Date().toISOString() };
+                        }
+                        return summary;
+                    });
+                }
+
+                if (csMetadataUpdated) {
+                    await bucket.file(quotationData.storagePath).save(JSON.stringify(metadata), {
+                        contentType: 'application/json'
+                    });
+                    console.log(`Cloud metadata ${doc.id} updated with new prices.`);
+                }
+
+            } catch (storageErr) {
+                console.error(`Error processing Cloud Storage metadata ${doc.id} for price update:`, storageErr);
+            }
+        }
 
         res.json({ message: 'Prices and metadata updated successfully' });
     } catch (err) {
